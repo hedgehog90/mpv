@@ -191,14 +191,6 @@ struct priv {
     // Final PTS of previously decoded frame
     double pts;
 
-    // a bunch of variables for better pts correction
-    double curr_in_pts;
-    double last_in_pts;
-    double in_pts_delta_cache[max_pts_cache];
-    int pts_cache_index;
-    double avg_in_pts_delta;
-    bool reliable_fps;
-
     struct mp_image_params dec_format, last_format, fixed_format;
 
     double fps;
@@ -333,11 +325,6 @@ static void decf_reset(struct mp_filter *f)
 
     p->pts = MP_NOPTS_VALUE;
     p->last_format = p->fixed_format = (struct mp_image_params){0};
-    
-    p->pts_cache_index = 0;
-    p->avg_in_pts_delta = 1.0 / p->fps;
-    p->curr_in_pts = MP_NOPTS_VALUE;
-    p->last_in_pts = MP_NOPTS_VALUE;
 
     pthread_mutex_lock(&p->cache_lock);
     p->pts_reset = false;
@@ -650,9 +637,6 @@ void mp_decoder_wrapper_get_video_dec_params(struct mp_decoder_wrapper *d,
 // this deals with cases where it doesn't.
 static void crazy_video_pts_stuff(struct priv *p, struct mp_image *mpi)
 {
-    p->last_in_pts = p->curr_in_pts;
-    p->curr_in_pts = mpi->pts;
-
     // Note: the PTS is reordered, but the DTS is not. Both must be monotonic.
 
     if (mpi->pts != MP_NOPTS_VALUE) {
@@ -684,32 +668,6 @@ static void crazy_video_pts_stuff(struct priv *p, struct mp_image *mpi)
         int delay = -1;
         p->decoder->control(p->decoder->f, VDCTRL_GET_BFRAMES, &delay);
         mpi->pts -= MPMAX(delay, 0) / p->fps;
-    }
-    
-    if (!p->reliable_fps) {
-        // Container fps is not reliable enough to determine actual frame time.
-        // Instead, lets make an educated guess by averaging the change in pts
-        // over a period of time to better determine an appropriate fps if
-        // pts is non-monotonic.
-        // Although the pts may be unreliable on a frame by frame basis, averaged
-        // over a period of time seems to give very good results.
-        int pts_cache_len = MPMIN(p->pts_cache_index+1, max_pts_cache);
-        double in_pts_delta = p->curr_in_pts - p->last_in_pts;
-        double tolerance = 1.0;
-        // add delta to cache, but ignore values that are wildly wrong.
-        if (in_pts_delta != MP_NOPTS_VALUE && fabs(in_pts_delta - p->avg_in_pts_delta) < tolerance) {
-            p->in_pts_delta_cache[p->pts_cache_index % pts_cache_len] = in_pts_delta;
-            p->pts_cache_index++;
-        }
-        if (p->pts_cache_index > 0) {
-            int i;
-            double sum = 0;
-            for(i = 0; i < pts_cache_len; i++)
-                sum += p->in_pts_delta_cache[i];
-            double avg = sum = fabs(sum) / pts_cache_len;
-            p->avg_in_pts_delta = avg > 0.0001 ? avg : 1.0 / 25.0;
-            // MP_WARN(p, "fps: %f | avg fps: %f\n", p->fps, 1.0 / p->avg_in_pts_delta);
-        }
     }
 }
 
@@ -773,26 +731,30 @@ done:
 
 static void correct_video_pts(struct priv *p, struct mp_image *mpi)
 {
-    double fps = p->reliable_fps ? p->fps : 1.0 / p->avg_in_pts_delta;
-    double frame_time = 1.0 / (fps > 0 ? fps : 25);
-    double pts_delta = fabs(p->curr_in_pts) - fabs(p->pts);
+    double fps = p->fps > 0 ? p->fps : 25;
+    double frame_time = 1.0 / fps;
+    double pts_delta = mpi->pts - fabs(p->pts);
     
-    if (mpi->pts == MP_NOPTS_VALUE && p->opts->correct_pts) {
-        if (p->has_broken_decoded_pts <= 1) {
-            MP_WARN(p, "No video PTS! Making something up. Using "
+    if (mpi->pts == MP_NOPTS_VALUE) {
+        if (p->opts->correct_pts) {
+            if (p->has_broken_decoded_pts <= 1) {
+                MP_WARN(p, "No video PTS! Making something up. Using "
+                        "%f FPS.\n", fps);
+                if (p->has_broken_decoded_pts == 1)
+                    MP_WARN(p, "Ignoring further missing PTS warnings.\n");
+                p->has_broken_decoded_pts++;
+            }
+        } else {
+            MP_WARN(p, "Ignoring PTS, making something up using "
                     "%f FPS.\n", fps);
-            if (p->has_broken_decoded_pts == 1)
-                MP_WARN(p, "Ignoring further missing PTS warnings.\n");
-            p->has_broken_decoded_pts++;
         }
     }
     
-    // also check pts_delta if resulting pts goes backwards or barely changes
+    // also check if next pts goes backwards or barely changes
     if (!p->opts->correct_pts || mpi->pts == MP_NOPTS_VALUE ||
         pts_delta < 0.0001) {
         if (p->pts == MP_NOPTS_VALUE) {
-            double base = p->first_packet_pdts;
-            mpi->pts = base == MP_NOPTS_VALUE ? 0 : base;
+            mpi->pts = MP_PTS_OR_DEF(p->first_packet_pdts, 0);
         } else {
             mpi->pts = fabs(p->pts) + frame_time;
         }
@@ -951,6 +913,8 @@ static void feed_packet(struct priv *p)
         packet->dts = packet->pts;
 
     double pkt_pdts = pkt_pts == MP_NOPTS_VALUE ? pkt_dts : pkt_pts;
+    // if (fabs(MP_PTS_OR_DEF(pkt_dts, 0)) > fabs(pkt_pdts))
+    //     pkt_pdts = pkt_dts;
     if (p->first_packet_pdts == MP_NOPTS_VALUE)
         p->first_packet_pdts = pkt_pdts;
 
@@ -1230,7 +1194,6 @@ struct mp_decoder_wrapper *mp_decoder_wrapper_create(struct mp_filter *parent,
         p->log = mp_log_new(p, parent->global->log, "!vd");
 
         p->fps = src->codec->fps;
-        p->reliable_fps = src->codec->reliable_fps || p->opts->force_fps;
 
         MP_VERBOSE(p, "Container reported FPS: %f\n", p->fps);
 
