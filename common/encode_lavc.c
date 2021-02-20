@@ -103,11 +103,15 @@ const struct m_sub_options encode_config = {
         {"ofps", OPT_REMOVED("no replacement (use --vf-add=fps=VALUE for CFR)")},
         {"oautofps", OPT_REMOVED("no replacement")},
         {"omaxfps", OPT_REMOVED("no replacement")},
+        {"ocontinue-on-fail", OPT_FLAG(continue_on_fail)},
+        {"odiscontinuity-tolerance", OPT_FLOAT(discontinuity_tolerance),
+            M_RANGE(0.0, 1000000.0)},
         {0}
     },
     .size = sizeof(struct encode_opts),
     .defaults = &(const struct encode_opts){
         .copy_metadata = 1,
+        .discontinuity_tolerance = 5,
     },
 };
 
@@ -725,6 +729,18 @@ bool encode_lavc_didfail(struct encode_lavc_context *ctx)
     bool fail = ctx->priv->failed;
     pthread_mutex_unlock(&ctx->lock);
     return fail;
+}
+
+bool encode_lavc_try_reset_fail(struct encode_lavc_context *ctx)
+{
+    if (!ctx)
+        return false;
+    pthread_mutex_lock(&ctx->lock);
+    if (ctx->options->continue_on_fail)
+        ctx->priv->failed = false;
+    bool fail = ctx->priv->failed;
+    pthread_mutex_unlock(&ctx->lock);
+    return !fail;
 }
 
 static void encoder_destroy(void *ptr)

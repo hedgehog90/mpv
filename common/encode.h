@@ -46,6 +46,8 @@ struct encode_opts {
     int copy_metadata;
     char **set_metadata;
     char **remove_metadata;
+    int continue_on_fail;
+    float discontinuity_tolerance;
 };
 
 // interface for player core
@@ -61,5 +63,6 @@ void encode_lavc_expect_stream(struct encode_lavc_context *ctx,
 void encode_lavc_set_metadata(struct encode_lavc_context *ctx,
                               struct mp_tags *metadata);
 bool encode_lavc_didfail(struct encode_lavc_context *ctx); // check if encoding failed
+bool encode_lavc_try_reset_fail(struct encode_lavc_context *ctx);
 
 #endif
