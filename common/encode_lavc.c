@@ -731,10 +731,11 @@ bool encode_lavc_didfail(struct encode_lavc_context *ctx)
     return fail;
 }
 
+// true means success!
 bool encode_lavc_try_reset_fail(struct encode_lavc_context *ctx)
 {
     if (!ctx)
-        return false;
+        return true;
     pthread_mutex_lock(&ctx->lock);
     if (ctx->options->continue_on_fail)
         ctx->priv->failed = false;
