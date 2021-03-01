@@ -145,6 +145,7 @@ const struct m_sub_options dec_wrapper_conf = {
     },
 };
 
+#define max_pts_cache 64
 struct priv {
     struct mp_log *log;
     struct sh_stream *header;
@@ -730,11 +731,11 @@ done:
 
 static void correct_video_pts(struct priv *p, struct mp_image *mpi)
 {
-    mpi->pts *= p->play_dir;
-
-    if (!p->opts->correct_pts || mpi->pts == MP_NOPTS_VALUE) {
-        double fps = p->fps > 0 ? p->fps : 25;
-
+    double fps = p->fps > 0 ? p->fps : 25;
+    double frame_time = 1.0 / fps;
+    double pts_delta = mpi->pts - fabs(p->pts);
+    
+    if (mpi->pts == MP_NOPTS_VALUE) {
         if (p->opts->correct_pts) {
             if (p->has_broken_decoded_pts <= 1) {
                 MP_WARN(p, "No video PTS! Making something up. Using "
@@ -743,18 +744,23 @@ static void correct_video_pts(struct priv *p, struct mp_image *mpi)
                     MP_WARN(p, "Ignoring further missing PTS warnings.\n");
                 p->has_broken_decoded_pts++;
             }
-        }
-
-        double frame_time = 1.0f / fps;
-        double base = p->first_packet_pdts;
-        mpi->pts = p->pts;
-        if (mpi->pts == MP_NOPTS_VALUE) {
-            mpi->pts = base == MP_NOPTS_VALUE ? 0 : base;
         } else {
-            mpi->pts += frame_time;
+            MP_WARN(p, "Ignoring PTS, making something up using "
+                    "%f FPS.\n", fps);
         }
     }
-
+    
+    // also check if next pts goes backwards or barely changes
+    if (!p->opts->correct_pts || mpi->pts == MP_NOPTS_VALUE ||
+        pts_delta < 0.0001) {
+        if (p->pts == MP_NOPTS_VALUE) {
+            mpi->pts = MP_PTS_OR_DEF(p->first_packet_pdts, 0);
+        } else {
+            mpi->pts = fabs(p->pts) + frame_time;
+        }
+    }
+    
+    mpi->pts *= p->play_dir;
     p->pts = mpi->pts;
 }
 
@@ -907,6 +913,8 @@ static void feed_packet(struct priv *p)
         packet->dts = packet->pts;
 
     double pkt_pdts = pkt_pts == MP_NOPTS_VALUE ? pkt_dts : pkt_pts;
+    // if (fabs(MP_PTS_OR_DEF(pkt_dts, 0)) > fabs(pkt_pdts))
+    //     pkt_pdts = pkt_dts;
     if (p->first_packet_pdts == MP_NOPTS_VALUE)
         p->first_packet_pdts = pkt_pdts;
 
