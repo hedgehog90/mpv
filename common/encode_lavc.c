@@ -104,7 +104,8 @@ const struct m_sub_options encode_config = {
         {"oautofps", OPT_REMOVED("no replacement")},
         {"omaxfps", OPT_REMOVED("no replacement")},
 
-        {"ocontinue-on-fail", OPT_FLAG(continue_on_fail)},        {"oforce-key-frames", OPT_STRING(forced_keyframes)},
+        {"ocontinue-on-fail", OPT_FLAG(continue_on_fail)},
+        {"oforce-key-frames", OPT_STRING(forced_keyframes)},
         {"odiscontinuity-tolerance", OPT_FLOAT(discontinuity_tolerance),
             M_RANGE(0.0, 1000000.0)},
         {0}
