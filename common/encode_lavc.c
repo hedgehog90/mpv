@@ -182,6 +182,9 @@ struct encode_lavc_context *encode_lavc_init(struct mpv_global *global)
             ctx->forced_keyframes_expr_const_values[FKF_N_FORCED] = 0;
             ctx->forced_keyframes_expr_const_values[FKF_PREV_FORCED_N] = NAN;
             ctx->forced_keyframes_expr_const_values[FKF_PREV_FORCED_T] = NAN;
+        } else {
+            MP_ERR(p, "Invalid force_key_frames option '%s' must begin with 'expr:'\n",
+                    ctx->options->forced_keyframes);
         }
     }
 
