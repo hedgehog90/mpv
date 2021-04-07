@@ -5241,6 +5241,8 @@ static void cmd_track_add(void *p)
     struct mp_cmd_ctx *cmd = p;
     struct MPContext *mpctx = cmd->mpctx;
     int type = *(int *)cmd->priv;
+    bool is_albumart = type == STREAM_VIDEO &&
+                    cmd->args[4].v.i;
 
     if (mpctx->stop_play) {
         cmd->success = false;
@@ -5283,8 +5285,6 @@ static void cmd_track_add(void *p)
         char *lang = cmd->args[3].v.s;
         if (lang && lang[0])
             t->lang = talloc_strdup(t, lang);
-        int extra = cmd->args[4].v.i;
-        int is_albumart = extra & 1;
         t->attached_picture = t->type == STREAM_VIDEO && is_albumart;
     }
 
@@ -6076,8 +6076,7 @@ const struct mp_cmd_def mp_cmds[] = {
                 .flags = MP_CMD_OPT_ARG},
             {"title", OPT_STRING(v.s), .flags = MP_CMD_OPT_ARG},
             {"lang", OPT_STRING(v.s), .flags = MP_CMD_OPT_ARG},
-            {"extra", OPT_CHOICE(v.i,
-                {"albumart", 1}), .flags = MP_CMD_OPT_ARG},
+            {"albumart", OPT_FLAG(v.i), .flags = MP_CMD_OPT_ARG},
         },
         .priv = &(const int){STREAM_VIDEO},
         .spawn_thread = true,
