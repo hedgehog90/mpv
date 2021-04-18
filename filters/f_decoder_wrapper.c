@@ -731,11 +731,12 @@ done:
 
 static void correct_video_pts(struct priv *p, struct mp_image *mpi)
 {
-    double fps = p->fps > 0 ? p->fps : 25;
-    double frame_time = 1.0 / fps;
-    double pts_delta = mpi->pts - fabs(p->pts);
-    
-    if (mpi->pts == MP_NOPTS_VALUE) {
+    mpi->pts *= p->play_dir;
+    double pts_delta = mpi->pts - p->pts;
+
+    if (!p->opts->correct_pts || mpi->pts == MP_NOPTS_VALUE || pts_delta < 0.0001) {
+        double fps = p->fps > 0 ? p->fps : 25;
+
         if (p->opts->correct_pts) {
             if (p->has_broken_decoded_pts <= 1) {
                 MP_WARN(p, "No video PTS! Making something up. Using "
@@ -744,23 +745,18 @@ static void correct_video_pts(struct priv *p, struct mp_image *mpi)
                     MP_WARN(p, "Ignoring further missing PTS warnings.\n");
                 p->has_broken_decoded_pts++;
             }
+        }
+
+        double frame_time = 1.0f / fps;
+        double base = p->first_packet_pdts;
+        mpi->pts = p->pts;
+        if (mpi->pts == MP_NOPTS_VALUE) {
+            mpi->pts = base == MP_NOPTS_VALUE ? 0 : base;
         } else {
-            MP_WARN(p, "Ignoring PTS, making something up using "
-                    "%f FPS.\n", fps);
+            mpi->pts = p->pts + frame_time;
         }
     }
-    
-    // also check if next pts goes backwards or barely changes
-    if (!p->opts->correct_pts || mpi->pts == MP_NOPTS_VALUE ||
-        pts_delta < 0.0001) {
-        if (p->pts == MP_NOPTS_VALUE) {
-            mpi->pts = MP_PTS_OR_DEF(p->first_packet_pdts, 0);
-        } else {
-            mpi->pts = fabs(p->pts) + frame_time;
-        }
-    }
-    
-    mpi->pts *= p->play_dir;
+
     p->pts = mpi->pts;
 }
 
