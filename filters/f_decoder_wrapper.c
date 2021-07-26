@@ -656,21 +656,23 @@ static void crazy_video_pts_stuff(struct priv *p, struct mp_image *mpi)
     if (p->num_codec_pts_problems)
         p->has_broken_packet_pts = 1;
 
+
+    // If PTS is unset, or non-monotonic, fall back to DTS.
+    if ((p->num_codec_pts_problems > p->num_codec_dts_problems ||
+        mpi->pts == MP_NOPTS_VALUE) && mpi->dts != MP_NOPTS_VALUE) {
+        mpi->pts = mpi->dts;
+    }
+    
     double pts_delta = mpi->pts - p->pts;
-    if (pts_delta < 0.0001) {
-        double fps = p->fps > 0 ? p->fps : 25;
-        double frame_time = 1.0f / fps;
-        double base = p->first_packet_pdts;
-        if (mpi->pts == MP_NOPTS_VALUE) {
-            mpi->pts = base == MP_NOPTS_VALUE ? 0 : base;
-        } else {
-            mpi->pts = p->pts + frame_time;
-        }
-    } else {
-        // If PTS is unset, or non-monotonic, fall back to DTS.
-        if ((p->num_codec_pts_problems > p->num_codec_dts_problems ||
-            mpi->pts == MP_NOPTS_VALUE) && mpi->dts != MP_NOPTS_VALUE)
-            mpi->pts = mpi->dts;
+    double base = p->first_packet_pdts;
+    double fps = p->fps > 0 ? p->fps : 25;
+    double frame_time = 1.0f / fps;
+    if (mpi->pts == MP_NOPTS_VALUE) {
+        mpi->pts = base == MP_NOPTS_VALUE ? 0 : base;
+    } else if (pts_delta < 0.0001) {
+        mpi->pts = p->pts + frame_time;
+        MP_WARN(p, "Correcting Video PTS "
+                    "%f -> %f.\n", p->pts, mpi->pts);
     }
 
     // Compensate for incorrectly using mpeg-style DTS for avi timestamps.
@@ -764,9 +766,7 @@ static void correct_video_pts(struct priv *p, struct mp_image *mpi)
         if (mpi->pts == MP_NOPTS_VALUE) {
             mpi->pts = base == MP_NOPTS_VALUE ? 0 : base;
         } else {
-            mpi->pts = p->pts + frame_time;
-            MP_WARN(p, "Correcting Video PTS "
-                        "%f -> %f.\n", p->pts, mpi->pts);
+            mpi->pts += frame_time;
         }
     }
 
