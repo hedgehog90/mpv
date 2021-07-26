@@ -225,6 +225,14 @@ static void draw_frame(struct vo *vo, struct vo_frame *voframe)
     frame->quality = avc->global_quality;
     encoder_encode(enc, frame);
     av_frame_free(&frame);
+    ectx->pts = outpts;
+    ectx->frames += 1;
+}
+
+static bool query_untimed(struct vo *vo)
+{
+    struct encode_lavc_context *ectx = vo->encode_lavc_ctx;
+    return !ectx->options->realtime;
 }
 
 static void flip_page(struct vo *vo)
@@ -241,7 +249,7 @@ const struct vo_driver video_out_lavc = {
     .description = "video encoding using libavcodec",
     .name = "lavc",
     .initially_blocked = true,
-    .untimed = true,
+    .query_untimed = query_untimed,
     .priv_size = sizeof(struct priv),
     .preinit = preinit,
     .query_format = query_format,

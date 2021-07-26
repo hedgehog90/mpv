@@ -51,6 +51,8 @@ struct encode_lavc_context {
     pthread_mutex_t lock;
 
     // anti discontinuity mode
+    double pts;
+    int64_t frames;
     double next_in_pts;
     double discontinuity_pts_offset;
     

@@ -108,6 +108,7 @@ const struct m_sub_options encode_config = {
         {"oforce-key-frames", OPT_STRING(forced_keyframes)},
         {"odiscontinuity-tolerance", OPT_FLOAT(discontinuity_tolerance),
             M_RANGE(0.0, 1000000.0)},
+        {"orealtime", OPT_FLAG(realtime)},
         {0}
     },
     .size = sizeof(struct encode_opts),

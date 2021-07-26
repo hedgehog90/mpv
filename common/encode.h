@@ -48,6 +48,7 @@ struct encode_opts {
     char **set_metadata;
     char **remove_metadata;
     int continue_on_fail;
+    int realtime;
     float discontinuity_tolerance;
 };
 
@@ -65,5 +66,6 @@ void encode_lavc_set_metadata(struct encode_lavc_context *ctx,
                               struct mp_tags *metadata);
 bool encode_lavc_didfail(struct encode_lavc_context *ctx); // check if encoding failed
 bool encode_lavc_try_reset_fail(struct encode_lavc_context *ctx);
+bool encode_set_paused(struct encode_lavc_context *ctx, bool pause);
 
 #endif
