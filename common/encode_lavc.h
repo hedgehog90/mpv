@@ -52,6 +52,8 @@ struct encode_lavc_context {
     // anti discontinuity mode
     double next_in_pts;
     double discontinuity_pts_offset;
+    double pts;
+    int64_t frames;
 };
 
 // --- interface for vo/ao drivers
