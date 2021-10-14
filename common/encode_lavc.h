@@ -56,6 +56,9 @@ struct encode_lavc_context {
     
     AVExpr *forced_keyframes_pexpr;
     double forced_keyframes_expr_const_values[5];
+    
+    double pts;
+    int64_t frames;
 };
 
 enum forced_keyframes_const {

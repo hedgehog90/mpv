@@ -225,6 +225,8 @@ static void draw_frame(struct vo *vo, struct vo_frame *voframe)
     frame->quality = avc->global_quality;
     encoder_encode(enc, frame);
     av_frame_free(&frame);
+    ectx->pts = outpts;
+    ectx->frames += 1;
 }
 
 static bool query_untimed(struct vo *vo)
