@@ -172,6 +172,7 @@ typedef struct MPOpts {
     int softvol_mute;
     float softvol_max;
     int gapless_audio;
+    int end_on_eof;
 
     mp_vo_opts *vo;
     struct ao_opts *ao_opts;
