@@ -261,7 +261,6 @@ static bool audio_write(struct ao *ao, void **data, int samples)
     // See ao_driver.write_frames.
     struct mp_aframe *af = mp_aframe_new_ref(*(struct mp_aframe **)data);
 
-    double nextpts;
     double pts = mp_aframe_get_pts(af);
     double outpts = pts;
 
@@ -270,16 +269,15 @@ static bool audio_write(struct ao *ao, void **data, int samples)
 
     if (!ectx->options->rawts) {
         // Fix and apply the discontinuity pts offset.
-        nextpts = pts;
         if (ectx->discontinuity_pts_offset == MP_NOPTS_VALUE) {
-            ectx->discontinuity_pts_offset = ectx->next_in_pts - nextpts;
-        } else if (fabs(nextpts + ectx->discontinuity_pts_offset -
-                        ectx->next_in_pts) > 30)
+            ectx->discontinuity_pts_offset = ectx->next_in_pts - pts;
+        } else if (fabs(pts + ectx->discontinuity_pts_offset - ectx->next_in_pts) >
+                   ectx->options->discontinuity_tolerance)
         {
             MP_WARN(ao, "detected an unexpected discontinuity (pts jumped by "
                     "%f seconds)\n",
-                    nextpts + ectx->discontinuity_pts_offset - ectx->next_in_pts);
-            ectx->discontinuity_pts_offset = ectx->next_in_pts - nextpts;
+                    pts + ectx->discontinuity_pts_offset - ectx->next_in_pts);
+            ectx->discontinuity_pts_offset = ectx->next_in_pts - pts;
         }
 
         outpts = pts + ectx->discontinuity_pts_offset;
@@ -293,7 +291,7 @@ static bool audio_write(struct ao *ao, void **data, int samples)
 
     // Set next allowed input pts value (input side).
     if (!ectx->options->rawts) {
-        nextpts = ac->expected_next_pts + ectx->discontinuity_pts_offset;
+        double nextpts = ac->expected_next_pts + ectx->discontinuity_pts_offset;
         if (nextpts > ectx->next_in_pts)
             ectx->next_in_pts = nextpts;
     }
