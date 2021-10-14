@@ -104,6 +104,7 @@ const struct m_sub_options encode_config = {
         {"oautofps", OPT_REMOVED("no replacement")},
         {"omaxfps", OPT_REMOVED("no replacement")},
         {"oforce-key-frames", OPT_STRING(forced_keyframes)},
+        {"orealtime", OPT_FLAG(realtime)},
         {0}
     },
     .size = sizeof(struct encode_opts),

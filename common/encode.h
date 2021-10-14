@@ -47,6 +47,7 @@ struct encode_opts {
     char *forced_keyframes;
     char **set_metadata;
     char **remove_metadata;
+    int realtime;
 };
 
 // interface for player core
