@@ -46,6 +46,7 @@ struct encode_opts {
     int copy_metadata;
     char **set_metadata;
     char **remove_metadata;
+    int realtime;
 };
 
 // interface for player core

@@ -103,6 +103,7 @@ const struct m_sub_options encode_config = {
         {"ofps", OPT_REMOVED("no replacement (use --vf-add=fps=VALUE for CFR)")},
         {"oautofps", OPT_REMOVED("no replacement")},
         {"omaxfps", OPT_REMOVED("no replacement")},
+        {"orealtime", OPT_FLAG(realtime)},
         {0}
     },
     .size = sizeof(struct encode_opts),
