@@ -685,8 +685,6 @@ void mp_msg_force_stderr(struct mpv_global *global, bool force_stderr)
     pthread_mutex_lock(&root->lock);
     root->force_stderr = force_stderr;
     pthread_mutex_unlock(&root->lock);
-    if (force_stderr)
-        fseek(stdout, 0, SEEK_SET);
 }
 
 // Only to be called from the main thread.
