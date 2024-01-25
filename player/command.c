@@ -43,6 +43,7 @@
 #include "osdep/threads.h"
 #include "osdep/timer.h"
 #include "common/common.h"
+#include "common/encode_lavc.h"
 #include "input/input.h"
 #include "input/keycodes.h"
 #include "stream/stream.h"
@@ -800,6 +801,28 @@ static int mp_property_time_pos(void *ctx, struct m_property *prop,
         return M_PROPERTY_OK;
     }
     return property_time(action, arg, get_current_time(mpctx));
+}
+
+/// Current output pts (R)
+static int mp_property_output_pts(void *ctx, struct m_property *prop,
+                                int action, void *arg)
+{
+    MPContext *mpctx = ctx;
+    if (!mpctx->encode_lavc_ctx)
+        return M_PROPERTY_UNAVAILABLE;
+    double pts = mpctx->encode_lavc_ctx->pts;
+    return m_property_double_ro(action, arg, pts);
+}
+
+/// Current output frames (R)
+static int mp_property_output_frames(void *ctx, struct m_property *prop,
+                                int action, void *arg)
+{
+    MPContext *mpctx = ctx;
+    if (!mpctx->encode_lavc_ctx)
+        return M_PROPERTY_UNAVAILABLE;
+    int64_t frames = mpctx->encode_lavc_ctx->frames;
+    return m_property_int64_ro(action, arg, frames);
 }
 
 /// Current audio pts in seconds (R)
@@ -3897,6 +3920,10 @@ static const struct m_property mp_properties_base[] = {
     {"playlist-playing-pos", mp_property_playlist_playing_pos},
     M_PROPERTY_ALIAS("playlist-count", "playlist/count"),
 
+    //Encoder
+    {"output-pts", mp_property_output_pts},
+    {"output-frames", mp_property_output_frames},
+
     // Audio
     {"mixer-active", mp_property_mixer_active},
     {"volume", mp_property_volume},
@@ -4055,7 +4082,8 @@ static const char *const *const mp_event_property_change[] = {
       "secondary-sub-text", "audio-bitrate", "video-bitrate", "sub-bitrate",
       "decoder-frame-drop-count", "frame-drop-count", "video-frame-info",
       "vf-metadata", "af-metadata", "sub-start", "sub-end", "secondary-sub-start",
-      "secondary-sub-end", "video-out-params", "video-dec-params", "video-params"),
+      "secondary-sub-end", "video-out-params", "video-dec-params", "video-params",
+      "output-pts", "output-frames"),
     E(MP_EVENT_DURATION_UPDATE, "duration"),
     E(MPV_EVENT_VIDEO_RECONFIG, "video-out-params", "video-params",
       "video-format", "video-codec", "video-bitrate", "dwidth", "dheight",

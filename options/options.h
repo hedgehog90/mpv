@@ -191,6 +191,7 @@ typedef struct MPOpts {
     float softvol_gain_min;
     float softvol_gain_max;
     int gapless_audio;
+    int end_on_eof;
 
     mp_vo_opts *vo;
     struct ao_opts *ao_opts;

@@ -199,11 +199,11 @@ static void draw_frame(struct vo *vo, struct vo_frame *voframe)
     double pts = mpi->pts;
     double outpts = pts;
     if (!enc->options->rawts) {
-        // fix the discontinuity pts offset
+        // Fix and apply the discontinuity pts offset.
         if (ectx->discontinuity_pts_offset == MP_NOPTS_VALUE) {
             ectx->discontinuity_pts_offset = ectx->next_in_pts - pts;
-        } else if (fabs(pts + ectx->discontinuity_pts_offset -
-                        ectx->next_in_pts) > 30)
+        } else if (fabs(pts + ectx->discontinuity_pts_offset - ectx->next_in_pts) >
+                   ectx->options->discontinuity_tolerance)
         {
             MP_WARN(vo, "detected an unexpected discontinuity (pts jumped by "
                     "%f seconds)\n",
@@ -230,10 +230,18 @@ static void draw_frame(struct vo *vo, struct vo_frame *voframe)
     MP_HANDLE_OOM(frame);
 
     frame->pts = rint(outpts * av_q2d(av_inv_q(avc->time_base)));
-    frame->pict_type = 0; // keep this at unknown/undefined
+    frame->pict_type = encoder_get_pict_type(ectx, outpts);
     frame->quality = avc->global_quality;
     encoder_encode(enc, frame);
     av_frame_free(&frame);
+    ectx->pts = outpts;
+    ectx->frames += 1;
+}
+
+static bool query_untimed(struct vo *vo)
+{
+    struct encode_lavc_context *ectx = vo->encode_lavc_ctx;
+    return !ectx->options->realtime;
 }
 
 static void flip_page(struct vo *vo)
@@ -250,7 +258,7 @@ const struct vo_driver video_out_lavc = {
     .description = "video encoding using libavcodec",
     .name = "lavc",
     .initially_blocked = true,
-    .untimed = true,
+    .query_untimed = query_untimed,
     .priv_size = sizeof(struct priv),
     .preinit = preinit,
     .query_format = query_format,

@@ -408,7 +408,7 @@ static bool use_video_lookahead(struct MPContext *mpctx)
 {
     return mpctx->video_out &&
            !(mpctx->video_out->driver->caps & VO_CAP_NORETAIN) &&
-           !(mpctx->opts->untimed || mpctx->video_out->driver->untimed) &&
+           !(mpctx->opts->untimed || vo_query_untimed(mpctx->video_out)) &&
            !mpctx->opts->video_latency_hacks;
 }
 
@@ -625,7 +625,7 @@ static void update_avsync_before_frame(struct MPContext *mpctx)
          * If untimed is set always output frames immediately
          * without sleeping.
          */
-        if (mpctx->time_frame < -0.2 || opts->untimed || vo->driver->untimed)
+        if (mpctx->time_frame < -0.2 || opts->untimed || vo_query_untimed(vo))
             mpctx->time_frame = 0;
     }
 }
@@ -1245,7 +1245,7 @@ void write_video(struct MPContext *mpctx)
     struct vo_frame *frame = vo_frame_ref(&dummy);
 
     double diff = mpctx->past_frames[0].approx_duration;
-    if (opts->untimed || vo->driver->untimed)
+    if (opts->untimed || vo_query_untimed(vo))
         diff = -1; // disable frame dropping and aspects of frame timing
     if (diff >= 0) {
         // expected A/V sync correction is ignored

@@ -1021,7 +1021,7 @@ static void do_redraw(struct vo *vo)
     in->request_redraw = false;
     bool full_redraw = in->dropped_frame;
     struct vo_frame *frame = NULL;
-    if (!vo->driver->untimed)
+    if (!vo_query_untimed(vo))
         frame = vo_frame_ref(in->current_frame);
     if (frame)
         in->dropped_frame = false;
@@ -1125,6 +1125,11 @@ static MP_THREAD_VOID vo_thread(void *ptr)
 done:
     TA_FREEP(&in->dr_helper);
     MP_THREAD_RETURN();
+}
+
+bool vo_query_untimed(struct vo *vo)
+{
+    return vo->driver->query_untimed ? vo->driver->query_untimed(vo) : false;
 }
 
 void vo_set_paused(struct vo *vo, bool paused)

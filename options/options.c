@@ -729,6 +729,7 @@ static const m_option_t mp_opts[] = {
         {"no", 0},
         {"yes", 1},
         {"weak", -1})},
+    {"end-on-eof", OPT_FLAG(end_on_eof)},
 
     {"title", OPT_STRING(wintitle)},
     {"force-media-title", OPT_STRING(media_title)},

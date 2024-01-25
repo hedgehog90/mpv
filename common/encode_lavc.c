@@ -87,12 +87,27 @@ const struct m_sub_options encode_config = {
         {"ocopy-metadata", OPT_BOOL(copy_metadata)},
         {"oset-metadata", OPT_KEYVALUELIST(set_metadata)},
         {"oremove-metadata", OPT_STRINGLIST(remove_metadata)},
+        {"ocontinue-on-fail", OPT_FLAG(continue_on_fail)},
+        {"odiscontinuity-tolerance", OPT_FLOAT(discontinuity_tolerance),
+            M_RANGE(0.0, 1000000.0)},
+        {"oforce-key-frames", OPT_STRING(forced_keyframes)},
+        {"orealtime", OPT_FLAG(realtime)},
         {0}
     },
     .size = sizeof(struct encode_opts),
     .defaults = &(const struct encode_opts){
         .copy_metadata = true,
+        .discontinuity_tolerance = 5,
     },
+};
+
+const char *const forced_keyframes_const_names[] = {
+    "n",
+    "n_forced",
+    "prev_forced_n",
+    "prev_forced_t",
+    "t",
+    NULL
 };
 
 struct encode_lavc_context *encode_lavc_init(struct mpv_global *global)
@@ -143,6 +158,24 @@ struct encode_lavc_context *encode_lavc_init(struct mpv_global *global)
 
     p->muxer->url = av_strdup(filename);
     MP_HANDLE_OOM(p->muxer->url);
+    
+    if (ctx->options->forced_keyframes) {
+        if (!strncmp(ctx->options->forced_keyframes, "expr:", 5)) {
+            int ret = av_expr_parse(&ctx->forced_keyframes_pexpr, ctx->options->forced_keyframes+5,
+                                forced_keyframes_const_names, NULL, NULL, NULL, NULL, 0, NULL);
+            if (ret < 0) {
+                MP_ERR(p, "Invalid force_key_frames expression '%s'\n",
+                       ctx->options->forced_keyframes+5);
+            }
+            ctx->forced_keyframes_expr_const_values[FKF_N] = 0;
+            ctx->forced_keyframes_expr_const_values[FKF_N_FORCED] = 0;
+            ctx->forced_keyframes_expr_const_values[FKF_PREV_FORCED_N] = NAN;
+            ctx->forced_keyframes_expr_const_values[FKF_PREV_FORCED_T] = NAN;
+        } else {
+            MP_ERR(p, "Invalid force_key_frames option '%s' must begin with 'expr:'\n",
+                    ctx->options->forced_keyframes);
+        }
+    }
 
     return ctx;
 
@@ -711,6 +744,19 @@ bool encode_lavc_didfail(struct encode_lavc_context *ctx)
     return fail;
 }
 
+// true means success!
+bool encode_lavc_try_reset_fail(struct encode_lavc_context *ctx)
+{
+    if (!ctx)
+        return true;
+    pthread_mutex_lock(&ctx->lock);
+    if (ctx->options->continue_on_fail)
+        ctx->priv->failed = false;
+    bool fail = ctx->priv->failed;
+    pthread_mutex_unlock(&ctx->lock);
+    return !fail;
+}
+
 static void encoder_destroy(void *ptr)
 {
     struct encoder_context *p = ptr;
@@ -908,6 +954,25 @@ bool encoder_init_codec_and_muxer(struct encoder_context *p,
 fail:
     avcodec_close(p->encoder);
     return false;
+}
+
+enum AVPictureType encoder_get_pict_type(struct encode_lavc_context *enc, double outpts)
+{
+    enum AVPictureType pict_type = 0; // keep this at unknown/undefined
+    if (enc->forced_keyframes_pexpr) {
+        enc->forced_keyframes_expr_const_values[FKF_T] = outpts;
+        double res = av_expr_eval(enc->forced_keyframes_pexpr,
+                            enc->forced_keyframes_expr_const_values, NULL);
+        if (res) {
+            pict_type = AV_PICTURE_TYPE_I;
+            enc->forced_keyframes_expr_const_values[FKF_PREV_FORCED_N] =
+                enc->forced_keyframes_expr_const_values[FKF_N];
+            enc->forced_keyframes_expr_const_values[FKF_PREV_FORCED_T] =
+                enc->forced_keyframes_expr_const_values[FKF_T];
+            enc->forced_keyframes_expr_const_values[FKF_N_FORCED] += 1;
+        }
+    }
+    return pict_type;
 }
 
 bool encoder_encode(struct encoder_context *p, AVFrame *frame)
