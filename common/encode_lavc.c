@@ -87,11 +87,11 @@ const struct m_sub_options encode_config = {
         {"ocopy-metadata", OPT_BOOL(copy_metadata)},
         {"oset-metadata", OPT_KEYVALUELIST(set_metadata)},
         {"oremove-metadata", OPT_STRINGLIST(remove_metadata)},
-        {"ocontinue-on-fail", OPT_FLAG(continue_on_fail)},
+        {"ocontinue-on-fail", OPT_BOOL(continue_on_fail)},
         {"odiscontinuity-tolerance", OPT_FLOAT(discontinuity_tolerance),
             M_RANGE(0.0, 1000000.0)},
         {"oforce-key-frames", OPT_STRING(forced_keyframes)},
-        {"orealtime", OPT_FLAG(realtime)},
+        {"orealtime", OPT_BOOL(realtime)},
         {0}
     },
     .size = sizeof(struct encode_opts),
