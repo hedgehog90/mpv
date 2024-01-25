@@ -64,7 +64,7 @@ class CocoaCB: Common {
         mpv?.vo = vo
         if backendState == .needsInit {
             DispatchQueue.main.sync { self.initBackend(vo) }
-        } else {
+        } else if mpv?.opts.auto_window_resize ?? true {
             DispatchQueue.main.async {
                 self.updateWindowSize(vo)
                 self.layer?.update(force: true)
@@ -121,9 +121,7 @@ class CocoaCB: Common {
         }
 
         libmpv.setRenderICCProfile(colorSpace)
-        if #available(macOS 10.11, *) {
-            layer?.colorspace = colorSpace.cgColorSpace
-        }
+        layer?.colorspace = colorSpace.cgColorSpace
     }
 
     override func windowDidEndAnimation() {
@@ -167,16 +165,8 @@ class CocoaCB: Common {
         layer?.update(force: true)
     }
 
-    var controlCallback: mp_render_cb_control_fn = { ( v, ctx, e, request, d ) -> Int32 in
+    var controlCallback: mp_render_cb_control_fn = { ( v, ctx, e, request, data ) -> Int32 in
         let ccb = unsafeBitCast(ctx, to: CocoaCB.self)
-
-        // the data pointer can be a null pointer, the libmpv control callback
-        // provides nil instead of the 0 address like the usual control call of
-        // an internal vo, workaround to create a null pointer instead of nil
-        var data = UnsafeMutableRawPointer.init(bitPattern: 0).unsafelyUnwrapped
-        if let dunwrapped = d {
-            data = dunwrapped
-        }
 
         guard let vo = v, let events = e else {
             ccb.log.sendWarning("Unexpected nil value in Control Callback")
@@ -189,7 +179,7 @@ class CocoaCB: Common {
     override func control(_ vo: UnsafeMutablePointer<vo>,
                     events: UnsafeMutablePointer<Int32>,
                     request: UInt32,
-                    data: UnsafeMutableRawPointer) -> Int32
+                    data: UnsafeMutableRawPointer?) -> Int32
     {
         switch mp_voctrl(request) {
         case VOCTRL_PREINIT:
@@ -210,7 +200,7 @@ class CocoaCB: Common {
 
     func shutdown(_ destroy: Bool = false) {
         isShuttingDown = window?.isAnimating ?? false ||
-                         window?.isInFullscreen ?? false && Bool(mpv?.opts.native_fs ?? 1)
+                         window?.isInFullscreen ?? false && mpv?.opts.native_fs ?? true
         if window?.isInFullscreen ?? false && !(window?.isAnimating ?? false) {
             window?.close()
         }

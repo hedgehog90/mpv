@@ -35,13 +35,6 @@ UP      Scroll one line up
 DOWN    Scroll one line down
 ====   ==================
 
-Font
-~~~~
-
-For optimal visual experience, a font with support for many font weights and
-monospaced digits is recommended. By default, the open source font
-`Source Sans Pro <https://github.com/adobe-fonts/source-sans-pro>`_ is used.
-
 Configuration
 -------------
 
@@ -104,19 +97,24 @@ Configurable Options
 
     Show graphs for vsync and jitter values (page 1). Only when toggled.
 
+``plot_tonemapping_lut``
+    Default: no
+
+    Enable tone-mapping LUT visualization automatically. Only when toggled.
+
 ``flush_graph_data``
     Default: yes
 
     Clear data buffers used for drawing graphs when toggling.
 
 ``font``
-    Default: Source Sans Pro
+    Default: sans-serif
 
     Font name. Should support as many font weights as possible for optimal
     visual experience.
 
 ``font_mono``
-    Default: Source Sans Pro
+    Default: monospace
 
     Font name for parts where monospaced characters are necessary to align
     text. Currently, monospaced digits are sufficient.
@@ -227,8 +225,8 @@ are missing.
 Memory usage is approximate and does not reflect internal fragmentation.
 
 JS scripts memory reporting is disabled by default because collecting the data
-at the JS side has an overhead. It can be enabled by exporting the env var
-``MPV_LEAK_REPORT=1`` before starting mpv, and will increase JS memory usage.
+at the JS side has an overhead and will increase memory usage. It can be
+enabled by setting the ``--js-memory-report`` option before starting mpv.
 
 If entries have ``/time`` and ``/cpu`` variants, the former gives the real time
 (monotonic clock), while the latter the thread CPU time (only if the

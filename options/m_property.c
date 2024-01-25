@@ -18,8 +18,6 @@
 /// \file
 /// \ingroup Properties
 
-#include "config.h"
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -40,7 +38,7 @@ static int m_property_multiply(struct mp_log *log,
                                const struct m_property *prop_list,
                                const char *property, double f, void *ctx)
 {
-    union m_option_value val = {0};
+    union m_option_value val = m_option_value_default;
     struct m_option opt = {0};
     int r;
 
@@ -100,7 +98,7 @@ static int do_action(const struct m_property *prop_list, const char *name,
 int m_property_do(struct mp_log *log, const struct m_property *prop_list,
                   const char *name, int action, void *arg, void *ctx)
 {
-    union m_option_value val = {0};
+    union m_option_value val = m_option_value_default;
     int r;
 
     struct m_option opt = {0};
@@ -239,11 +237,10 @@ static void m_property_unkey(int *action, void **arg)
 static int m_property_do_bstr(const struct m_property *prop_list, bstr name,
                               int action, void *arg, void *ctx)
 {
-    char name0[64];
-    if (name.len >= sizeof(name0))
-        return M_PROPERTY_UNKNOWN;
-    snprintf(name0, sizeof(name0), "%.*s", BSTR_P(name));
-    return m_property_do(NULL, prop_list, name0, action, arg, ctx);
+    char *name0 = bstrdup0(NULL, name);
+    int ret = m_property_do(NULL, prop_list, name0, action, arg, ctx);
+    talloc_free(name0);
+    return ret;
 }
 
 static void append_str(char **s, int *len, bstr append)
@@ -355,14 +352,14 @@ void m_properties_print_help_list(struct mp_log *log,
     mp_info(log, "\nTotal: %d properties\n", count);
 }
 
-int m_property_flag_ro(int action, void* arg, int var)
+int m_property_bool_ro(int action, void* arg, bool var)
 {
     switch (action) {
     case M_PROPERTY_GET:
-        *(int *)arg = !!var;
+        *(bool *)arg = !!var;
         return M_PROPERTY_OK;
     case M_PROPERTY_GET_TYPE:
-        *(struct m_option *)arg = (struct m_option){.type = CONF_TYPE_FLAG};
+        *(struct m_option *)arg = (struct m_option){.type = CONF_TYPE_BOOL};
         return M_PROPERTY_OK;
     }
     return M_PROPERTY_NOT_IMPLEMENTED;
@@ -433,6 +430,23 @@ int m_property_strdup_ro(int action, void* arg, const char *var)
         return M_PROPERTY_OK;
     }
     return M_PROPERTY_NOT_IMPLEMENTED;
+}
+
+int m_property_read_sub_validate(void *ctx, struct m_property *prop,
+                                 int action, void *arg)
+{
+    m_property_unkey(&action, &arg);
+    switch (action) {
+    case M_PROPERTY_GET_TYPE:
+        *(struct m_option *)arg = (struct m_option){.type = CONF_TYPE_NODE};
+        return M_PROPERTY_OK;
+    case M_PROPERTY_GET:
+    case M_PROPERTY_PRINT:
+    case M_PROPERTY_KEY_ACTION:
+        return M_PROPERTY_VALID;
+    default:
+        return M_PROPERTY_NOT_IMPLEMENTED;
+    };
 }
 
 // This allows you to make a list of values (like from a struct) available
@@ -548,7 +562,7 @@ int m_property_read_list(int action, void *arg, int count,
                 r = get_item(n, M_PROPERTY_GET_TYPE, &opt, ctx);
                 if (r != M_PROPERTY_OK)
                     goto err;
-                union m_option_value val = {0};
+                union m_option_value val = m_option_value_default;
                 r = get_item(n, M_PROPERTY_GET, &val, ctx);
                 if (r != M_PROPERTY_OK)
                     goto err;

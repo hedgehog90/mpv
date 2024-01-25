@@ -42,7 +42,7 @@ function _mpv_generate_arguments {
   local -a option_aliases=()
 
   local list_options_line
-  for list_options_line in "${(@f)$($~words[1] --list-options)}"; do
+  for list_options_line in "${(@f)$($~words[1] --no-config --list-options)}"; do
 
     [[ $list_options_line =~ $'^[ \t]+--([^ \t]+)[ \t]*(.*)' ]] || continue
 
@@ -77,6 +77,10 @@ function _mpv_generate_arguments {
       # Save this for later; we might not have parsed the target option yet
       option_aliases+="$name $match[2]"
 
+    elif [[ $desc =~ $'^removed ' ]]; then
+
+      # skip
+
     else
 
       # Option takes argument
@@ -104,6 +108,10 @@ function _mpv_generate_arguments {
       elif [[ $name == show-profile ]]; then
 
         entry+="->parse-help-profile"
+
+      elif [[ $name == h(|elp) ]]; then
+
+        entry+="->help-options"
 
       fi
 
@@ -146,7 +154,7 @@ function _mpv_generate_arguments {
 function _mpv_generate_protocols {
   _mpv_completion_protocols=()
   local list_protos_line
-  for list_protos_line in "${(@f)$($~words[1] --list-protocols)}"; do
+  for list_protos_line in "${(@f)$($~words[1] --no-config --list-protocols)}"; do
     if [[ $list_protos_line =~ $'^[ \t]+(.*)' ]]; then
       _mpv_completion_protocols+="$match[1]"
     fi
@@ -188,6 +196,7 @@ case $state in
 
   parse-help-*)
     local option_name=${state#parse-help-}
+    local no_config="--no-config"
     # Can't do non-capturing groups without pcre, so we index the ones we want
     local pattern name_group=1 desc_group=2
     case $option_name in
@@ -199,6 +208,8 @@ case $state in
         # but would break if a profile name contained spaces. This stricter one
         # only breaks if a profile name contains tabs.
         pattern=$'^\t([^\t]*)\t(.*)'
+        # We actually want config so we can autocomplete the user's profiles
+        no_config=""
       ;;
       *)
         pattern=$'^[ \t]+(--'${option_name}$'=)?([^ \t]+)[ \t]*[-:]?[ \t]*(.*)'
@@ -207,7 +218,7 @@ case $state in
     esac
     local -a values
     local current
-    for current in "${(@f)$($~words[1] --${option_name}=help)}"; do
+    for current in "${(@f)$($~words[1] ${no_config} --${option_name}=help)}"; do
       [[ $current =~ $pattern ]] || continue;
       local name=${match[name_group]//:/\\:} desc=${match[desc_group]}
       if [[ -n $desc ]]; then
@@ -243,6 +254,10 @@ case $state in
       fi
       (( rc )) || return 0
     done
+  ;;
+
+  help-options)
+    compadd ${${${_mpv_completion_arguments%%=*}:#no-*}:#*-(add|append|clr|pre|set|remove|toggle)}
   ;;
 
 esac

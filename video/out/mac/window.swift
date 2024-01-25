@@ -28,9 +28,11 @@ class Window: NSWindow, NSWindowDelegate {
 
     var unfsContentFrame: NSRect?
     var isInFullscreen: Bool = false
-    var isAnimating: Bool = false
     var isMoving: Bool = false
     var previousStyleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+
+    var isAnimating: Bool = false
+    let animationLock: NSCondition = NSCondition()
 
     var unfsContentFramePixel: NSRect { get { return convertToBacking(unfsContentFrame ?? NSRect(x: 0, y: 0, width: 160, height: 90)) } }
     var framePixel: NSRect { get { return convertToBacking(frame) } }
@@ -89,6 +91,7 @@ class Window: NSWindow, NSWindowDelegate {
         title = com.title
         minSize = NSMakeSize(160, 90)
         collectionBehavior = .fullScreenPrimary
+        ignoresMouseEvents = mpv?.opts.cursor_passthrough ?? false
         delegate = self
 
         if let cView = contentView {
@@ -115,7 +118,9 @@ class Window: NSWindow, NSWindowDelegate {
             return
         }
 
+        animationLock.lock()
         isAnimating = true
+        animationLock.unlock()
 
         targetScreen = common.getTargetScreen(forFullscreen: !isInFullscreen)
         if targetScreen == nil && previousScreen == nil {
@@ -137,7 +142,7 @@ class Window: NSWindow, NSWindowDelegate {
             setFrame(frame, display: true)
         }
 
-        if Bool(mpv?.opts.native_fs ?? 1) {
+        if Bool(mpv?.opts.native_fs ?? true) {
             super.toggleFullScreen(sender)
         } else {
             if !isInFullscreen {
@@ -224,7 +229,10 @@ class Window: NSWindow, NSWindowDelegate {
             }, completionHandler: nil )
         }
 
+        animationLock.lock()
         isAnimating = false
+        animationLock.signal()
+        animationLock.unlock()
         common.windowDidEndAnimation()
     }
 
@@ -263,6 +271,14 @@ class Window: NSWindow, NSWindowDelegate {
         isInFullscreen = false
         mpv?.setOption(fullscreen: isInFullscreen)
         common.windowSetToWindow()
+    }
+
+    func waitForAnimation() {
+        animationLock.lock()
+        while(isAnimating){
+            animationLock.wait()
+        }
+        animationLock.unlock()
     }
 
     func getFsAnimationDuration(_ def: Double) -> Double {
@@ -327,21 +343,19 @@ class Window: NSWindow, NSWindowDelegate {
 
     func updateFrame(_ rect: NSRect) {
         if rect != frame {
-            let cRect = frameRect(forContentRect: rect)
             unfsContentFrame = rect
-            setFrame(cRect, display: true)
-            common.windowDidUpdateFrame()
+            if !isInFullscreen {
+                let cRect = frameRect(forContentRect: rect)
+                setFrame(cRect, display: true)
+                common.windowDidUpdateFrame()
+            }
         }
     }
 
     func updateSize(_ size: NSSize) {
         if let currentSize = contentView?.frame.size, size != currentSize {
             let newContentFrame = centeredContentSize(for: frame, size: size)
-            if !isInFullscreen {
-                updateFrame(newContentFrame)
-            } else {
-                unfsContentFrame = newContentFrame
-            }
+            updateFrame(newContentFrame)
         }
     }
 
@@ -554,7 +568,7 @@ class Window: NSWindow, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        common.setCursorVisiblility(true)
+        common.setCursorVisibility(true)
     }
 
     func windowDidBecomeKey(_ notification: Notification) {

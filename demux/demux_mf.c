@@ -16,6 +16,7 @@
  */
 
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
@@ -126,10 +127,9 @@ static mf_t *open_mf_pattern(void *talloc_ctx, struct demuxer *d, char *filename
 
 #if HAVE_GLOB
     if (!strchr(filename, '%')) {
-        strcpy(fname, filename);
-        if (!strchr(filename, '*'))
-            strcat(fname, "*");
-
+        // append * if none present
+        snprintf(fname, fname_avail, "%s%c", filename,
+            strchr(filename, '*') ? 0 : '*');
         mp_info(log, "search expr: %s\n", fname);
 
         glob_t gg;
@@ -154,23 +154,36 @@ static mf_t *open_mf_pattern(void *talloc_ctx, struct demuxer *d, char *filename
     // simplicity we reject all conversion specifiers except %% and simple
     // integer specifier: %[.][NUM]d where NUM is 1-3 digits (%.d is valid)
     const char *f = filename;
-    int MAXDIGS = 3, nspec = 0, bad_spec = 0, c;
+    int MAXDIGS = 3, nspec = 0, c;
+    bool bad_spec = false;
 
     while (nspec < 2 && (c = *f++)) {
         if (c != '%')
             continue;
-        if (*f != '%') {
-            nspec++;  // conversion specifier which isn't %%
-            if (*f == '.')
-                f++;
-            for (int ndig = 0; mp_isdigit(*f) && ndig < MAXDIGS; ndig++, f++)
-                /* no-op */;
-            if (*f != 'd') {
-                bad_spec++;  // not int, or beyond our validation capacity
-                break;
-            }
+
+        if (*f == '%') {
+            // '%%', which ends up as an explicit % in the output.
+            // Skipping forwards as it doesn't require further attention.
+            f++;
+            continue;
         }
-        // *f is '%' or 'd'
+
+        // Now c == '%' and *f != '%', thus we have entered territory of format
+        // specifiers which we are interested in.
+        nspec++;
+
+        if (*f == '.')
+            f++;
+
+        for (int ndig = 0; mp_isdigit(*f) && ndig < MAXDIGS; ndig++, f++)
+            /* no-op */;
+
+        if (*f != 'd') {
+            bad_spec = true; // not int, or beyond our validation capacity
+            break;
+        }
+
+        // *f is 'd'
         f++;
     }
 
@@ -271,59 +284,6 @@ static bool demux_mf_read_packet(struct demuxer *demuxer,
     return true;
 }
 
-// map file extension/type to a codec name
-
-static const struct {
-    const char *type;
-    const char *codec;
-} type2format[] = {
-    { "bmp",            "bmp" },
-    { "dpx",            "dpx" },
-    { "j2c",            "jpeg2000" },
-    { "j2k",            "jpeg2000" },
-    { "jp2",            "jpeg2000" },
-    { "jpc",            "jpeg2000" },
-    { "jpeg",           "mjpeg" },
-    { "jpg",            "mjpeg" },
-    { "jps",            "mjpeg" },
-    { "jls",            "ljpeg" },
-    { "thm",            "mjpeg" },
-    { "db",             "mjpeg" },
-    { "pcd",            "photocd" },
-    { "pfm",            "pfm" },
-    { "pcx",            "pcx" },
-    { "png",            "png" },
-    { "pns",            "png" },
-    { "ptx",            "ptx" },
-    { "tga",            "targa" },
-    { "tif",            "tiff" },
-    { "tiff",           "tiff" },
-    { "sgi",            "sgi" },
-    { "sun",            "sunrast" },
-    { "ras",            "sunrast" },
-    { "rs",             "sunrast" },
-    { "ra",             "sunrast" },
-    { "im1",            "sunrast" },
-    { "im8",            "sunrast" },
-    { "im24",           "sunrast" },
-    { "im32",           "sunrast" },
-    { "sunras",         "sunrast" },
-    { "xbm",            "xbm" },
-    { "pam",            "pam" },
-    { "pbm",            "pbm" },
-    { "pgm",            "pgm" },
-    { "pgmyuv",         "pgmyuv" },
-    { "ppm",            "ppm" },
-    { "pnm",            "ppm" },
-    { "gif",            "gif" }, // usually handled by demux_lavf
-    { "pix",            "brender_pix" },
-    { "exr",            "exr" },
-    { "pic",            "pictor" },
-    { "xface",          "xface" },
-    { "xwd",            "xwd" },
-    {0}
-};
-
 static const char *probe_format(mf_t *mf, char *type, enum demux_check check)
 {
     if (check > DEMUX_CHECK_REQUEST)
@@ -334,10 +294,9 @@ static const char *probe_format(mf_t *mf, char *type, enum demux_check check)
         if (p)
             type = p + 1;
     }
-    for (int i = 0; type2format[i].type; i++) {
-        if (type && strcasecmp(type, type2format[i].type) == 0)
-            return type2format[i].codec;
-    }
+    const char *codec = mp_map_type_to_image_codec(type);
+    if (codec)
+        return codec;
     if (check == DEMUX_CHECK_REQUEST) {
         if (!org_type) {
             MP_ERR(mf, "file type was not set! (try --mf-type=ext)\n");
@@ -365,15 +324,9 @@ static int demux_open_mf(demuxer_t *demuxer, enum demux_check check)
     if (!mf || mf->nr_of_files < 1)
         goto error;
 
-    double mf_fps;
-    char *mf_type;
-    mp_read_option_raw(demuxer->global, "mf-fps", &m_option_type_double, &mf_fps);
-    mp_read_option_raw(demuxer->global, "mf-type", &m_option_type_string, &mf_type);
-
     const char *codec = mp_map_mimetype_to_video_codec(demuxer->stream->mime_type);
-    if (!codec || (mf_type && mf_type[0]))
-        codec = probe_format(mf, mf_type, check);
-    talloc_free(mf_type);
+    if (!codec || (demuxer->opts->mf_type && demuxer->opts->mf_type[0]))
+        codec = probe_format(mf, demuxer->opts->mf_type, check);
     if (!codec)
         goto error;
 
@@ -381,12 +334,16 @@ static int demux_open_mf(demuxer_t *demuxer, enum demux_check check)
 
     // create a new video stream header
     struct sh_stream *sh = demux_alloc_sh_stream(STREAM_VIDEO);
-    struct mp_codec_params *c = sh->codec;
+    if (mf->nr_of_files == 1) {
+        MP_VERBOSE(demuxer, "Assuming this is an image format.\n");
+        sh->image = true;
+    }
 
+    struct mp_codec_params *c = sh->codec;
     c->codec = codec;
     c->disp_w = 0;
     c->disp_h = 0;
-    c->fps = mf_fps;
+    c->fps = demuxer->opts->mf_fps;
     c->reliable_fps = true;
 
     demux_add_sh_stream(demuxer, sh);

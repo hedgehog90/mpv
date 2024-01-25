@@ -1,12 +1,21 @@
 #pragma once
 
+#include "config.h"
 #include "common/common.h"
 #include "common/msg.h"
+#include "video/csputils.h"
+#include "video/mp_image.h"
+
+#include <libavutil/buffer.h>
 
 #include <libplacebo/common.h>
-#include <libplacebo/context.h>
+#include <libplacebo/log.h>
+#include <libplacebo/colorspace.h>
+#include <libplacebo/renderer.h>
+#include <libplacebo/utils/libav.h>
 
-void mppl_ctx_set_log(struct pl_context *ctx, struct mp_log *log, bool probing);
+pl_log mppl_log_create(void *tactx, struct mp_log *log);
+void mppl_log_set_probing(pl_log log, bool probing);
 
 static inline struct pl_rect2d mp_rect2d_to_pl(struct mp_rect rc)
 {
@@ -17,3 +26,6 @@ static inline struct pl_rect2d mp_rect2d_to_pl(struct mp_rect rc)
         .y1 = rc.y1,
     };
 }
+
+void mp_map_dovi_metadata_to_pl(struct mp_image *mpi,
+                                struct pl_frame *frame);

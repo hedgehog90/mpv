@@ -21,7 +21,6 @@
 #include <math.h>
 #include <assert.h>
 
-#include "config.h"
 #include "mpv_talloc.h"
 
 #include "common/msg.h"
@@ -101,7 +100,7 @@ static bool update_subtitle(struct MPContext *mpctx, double video_pts,
         sub_preload(dec_sub);
     }
 
-    if (!sub_read_packets(dec_sub, video_pts))
+    if (!sub_read_packets(dec_sub, video_pts, mpctx->paused))
         return false;
 
     // Handle displaying subtitles on terminal; never done for secondary subs
@@ -117,7 +116,7 @@ static bool update_subtitle(struct MPContext *mpctx, double video_pts,
     if (mpctx->video_out && mpctx->video_status == STATUS_EOF &&
         (mpctx->opts->subs_rend->sub_past_video_end ||
          !mpctx->current_track[0][STREAM_VIDEO] ||
-         mpctx->current_track[0][STREAM_VIDEO]->attached_picture)) {
+         mpctx->current_track[0][STREAM_VIDEO]->image)) {
         if (osd_get_force_video_pts(mpctx->osd) != video_pts) {
             osd_set_force_video_pts(mpctx->osd, video_pts);
             osd_query_and_reset_want_redraw(mpctx->osd);
@@ -170,7 +169,7 @@ static bool init_subdec(struct MPContext *mpctx, struct track *track)
     if (!track->demuxer || !track->stream)
         return false;
 
-    track->d_sub = sub_create(mpctx->global, track->stream,
+    track->d_sub = sub_create(mpctx->global, track,
                               get_all_attachments(mpctx),
                               get_order(mpctx, track));
     if (!track->d_sub)
@@ -200,10 +199,12 @@ void reinit_sub(struct MPContext *mpctx, struct track *track)
     sub_select(track->d_sub, true);
     int order = get_order(mpctx, track);
     osd_set_sub(mpctx->osd, order, track->d_sub);
-    sub_control(track->d_sub, SD_CTRL_SET_TOP, &order);
 
+    // When paused we have to wait for packets to be available.
+    // So just retry until we get a packet in this case.
     if (mpctx->playback_initialized)
-        update_subtitles(mpctx, mpctx->playback_pts);
+        while (!update_subtitles(mpctx, mpctx->playback_pts) &&
+               mpctx->paused && !mpctx->paused_for_cache);
 }
 
 void reinit_sub_all(struct MPContext *mpctx)

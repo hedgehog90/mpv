@@ -42,23 +42,14 @@ class MPVHelper {
         self.vo = vo
         self.log = log
 
-        guard let app = NSApp as? Application,
-              let cache = m_config_cache_alloc(vo, vo.pointee.global, app.getVoSubConf()) else
-        {
-            log.sendError("NSApp couldn't be retrieved")
-            exit(1)
-        }
-
-        optsCachePtr = cache
-        optsPtr = UnsafeMutablePointer<mp_vo_opts>(OpaquePointer(cache.pointee.opts))
-
-        guard let macCache = m_config_cache_alloc(vo,
-                                                  vo.pointee.global,
-                                                  app.getMacOSConf()) else
+        guard let cache = m_config_cache_alloc(vo, vo.pointee.global, Application.getVoSubConf()),
+              let macCache = m_config_cache_alloc(vo, vo.pointee.global, Application.getMacOSConf()) else
         {
             // will never be hit, mp_get_config_group asserts for invalid groups
             exit(1)
         }
+        optsCachePtr = cache
+        optsPtr = UnsafeMutablePointer<mp_vo_opts>(OpaquePointer(cache.pointee.opts))
         macOptsCachePtr = macCache
         macOptsPtr = UnsafeMutablePointer<macos_opts>(OpaquePointer(macCache.pointee.opts))
     }
@@ -76,12 +67,26 @@ class MPVHelper {
         mp_input_set_mouse_pos(input, Int32(pos.x), Int32(pos.y))
     }
 
-    func putAxis(_ mpkey: Int32, delta: Double) {
-        mp_input_put_wheel(input, mpkey, delta)
+    func putAxis(_ mpkey: Int32, modifiers: NSEvent.ModifierFlags, delta: Double) {
+        mp_input_put_wheel(input, mpkey | mapModifier(modifiers), delta)
     }
 
     func nextChangedOption(property: inout UnsafeMutableRawPointer?) -> Bool {
         return m_config_cache_get_next_changed(optsCachePtr, &property)
+    }
+
+    func open(files: [String]) {
+        if opts.drag_and_drop == -2 { return }
+
+        var action = NSEvent.modifierFlags.contains(.shift) ? DND_APPEND : DND_REPLACE
+        if opts.drag_and_drop >= 0  {
+            action = mp_dnd_action(UInt32(opts.drag_and_drop))
+        }
+
+        let filesClean = files.map{ $0.hasPrefix("file:///.file/id=") ? (URL(string: $0)?.path ?? $0) : $0 }
+        var filesPtr = filesClean.map { UnsafeMutablePointer<CChar>(strdup($0)) }
+        mp_event_drop_files(input, Int32(files.count), &filesPtr, action)
+        for charPtr in filesPtr { free(UnsafeMutablePointer(mutating: charPtr)) }
     }
 
     func setOption(fullscreen: Bool) {
@@ -92,14 +97,14 @@ class MPVHelper {
     }
 
     func setOption(minimized: Bool) {
-        optsPtr.pointee.window_minimized = Int32(minimized)
+        optsPtr.pointee.window_minimized = minimized
         _ = withUnsafeMutableBytes(of: &optsPtr.pointee.window_minimized) { (ptr: UnsafeMutableRawBufferPointer) in
             m_config_cache_write_opt(optsCachePtr, ptr.baseAddress)
         }
     }
 
     func setOption(maximized: Bool) {
-        optsPtr.pointee.window_maximized = Int32(maximized)
+        optsPtr.pointee.window_maximized = maximized
         _ = withUnsafeMutableBytes(of: &optsPtr.pointee.window_maximized) { (ptr: UnsafeMutableRawBufferPointer) in
             m_config_cache_write_opt(optsCachePtr, ptr.baseAddress)
         }
@@ -118,6 +123,27 @@ class MPVHelper {
         let mpvCmd = mp_input_parse_cmd(input, bstr0(cCmd), "")
         mp_input_queue_cmd(input, mpvCmd)
         free(UnsafeMutablePointer(mutating: cCmd))
+    }
+
+    func mapModifier(_ modifiers: NSEvent.ModifierFlags) -> Int32 {
+        var mask: UInt32 = 0;
+
+        if modifiers.contains(.shift) {
+            mask |= MP_KEY_MODIFIER_SHIFT
+        }
+        if modifiers.contains(.control) {
+            mask |= MP_KEY_MODIFIER_CTRL
+        }
+        if modifiers.contains(.command) {
+            mask |= MP_KEY_MODIFIER_META
+        }
+        if modifiers.rawValue & UInt(NX_DEVICELALTKEYMASK) != 0 ||
+           modifiers.rawValue & UInt(NX_DEVICERALTKEYMASK) != 0 && !mp_input_use_alt_gr(input)
+        {
+            mask |= MP_KEY_MODIFIER_ALT
+        }
+
+        return Int32(mask)
     }
 
     // (__bridge void*)

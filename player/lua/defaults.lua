@@ -175,7 +175,7 @@ function mp.flush_keybindings()
 end
 
 local function add_binding(attrs, key, name, fn, rp)
-    if (type(name) ~= "string") and (name ~= nil) then
+    if type(name) ~= "string" and name ~= nil then
         rp = fn
         fn = name
         name = nil
@@ -226,7 +226,7 @@ local function add_binding(attrs, key, name, fn, rp)
             end
             if is_mouse and (event == "u" or event == "p") then
                 fn()
-            elseif (not is_mouse) and (event == "d" or event == "r" or event == "p") then
+            elseif not is_mouse and (event == "d" or event == "r" or event == "p") then
                 fn()
             end
         end
@@ -265,20 +265,22 @@ local timers = {}
 local timer_mt = {}
 timer_mt.__index = timer_mt
 
-function mp.add_timeout(seconds, cb)
-    local t = mp.add_periodic_timer(seconds, cb)
+function mp.add_timeout(seconds, cb, disabled)
+    local t = mp.add_periodic_timer(seconds, cb, disabled)
     t.oneshot = true
     return t
 end
 
-function mp.add_periodic_timer(seconds, cb)
+function mp.add_periodic_timer(seconds, cb, disabled)
     local t = {
         timeout = seconds,
         cb = cb,
         oneshot = false,
     }
     setmetatable(t, timer_mt)
-    t:resume()
+    if not disabled then
+        t:resume()
+    end
     return t
 end
 
@@ -314,7 +316,7 @@ end
 local function get_next_timer()
     local best = nil
     for t, _ in pairs(timers) do
-        if (best == nil) or (t.next_deadline < best.next_deadline) then
+        if best == nil or t.next_deadline < best.next_deadline then
             best = t
         end
     end
@@ -542,9 +544,6 @@ function mp.dispatch_events(allow_wait)
                     end
                 end
             end
-            -- Resume playloop - important especially if an error happened while
-            -- suspended, and the error was handled, but no resume was done.
-            mp.resume_all()
             if allow_wait ~= true then
                 return
             end
@@ -599,7 +598,7 @@ mp.register_event("hook", function(ev)
     if fn then
         fn(hookobj)
     end
-    if (not hookobj._defer) and hookobj._id ~= nil then
+    if not hookobj._defer and hookobj._id ~= nil then
         hookobj:cont()
     end
 end)
@@ -618,9 +617,10 @@ local async_next_id = 1
 function mp.command_native_async(node, cb)
     local id = async_next_id
     async_next_id = async_next_id + 1
+    cb = cb or function() end
     local res, err = mp.raw_command_native_async(id, node)
     if not res then
-        cb(false, nil, err)
+        mp.add_timeout(0, function() cb(false, nil, err) end)
         return res, err
     end
     local t = {cb = cb, id = id}
@@ -807,30 +807,6 @@ end
 
 function mp_utils.subprocess_detached(t)
     mp.commandv("run", unpack(t.args))
-end
-
-function mp_utils.shared_script_property_set(name, value)
-    if value ~= nil then
-        -- no such thing as change-list with mpv_node, so build a string value
-        mp.commandv("change-list", "shared-script-properties", "append",
-                    name .. "=" .. value)
-    else
-        mp.commandv("change-list", "shared-script-properties", "remove", name)
-    end
-end
-
-function mp_utils.shared_script_property_get(name)
-    local map = mp.get_property_native("shared-script-properties")
-    return map and map[name]
-end
-
--- cb(name, value) on change and on init
-function mp_utils.shared_script_property_observe(name, cb)
-    -- it's _very_ wasteful to observe the mpv core "super" property for every
-    -- shared sub-property, but then again you shouldn't use this
-    mp.observe_property("shared-script-properties", "native", function(_, val)
-        cb(name, val and val[name])
-    end)
 end
 
 return {}

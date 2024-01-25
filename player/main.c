@@ -21,16 +21,19 @@
 #include <math.h>
 #include <assert.h>
 #include <string.h>
-#include <pthread.h>
 #include <locale.h>
 
 #include "config.h"
+
+#include <libplacebo/config.h>
+
 #include "mpv_talloc.h"
 
 #include "misc/dispatch.h"
 #include "misc/thread_pool.h"
 #include "osdep/io.h"
 #include "osdep/terminal.h"
+#include "osdep/threads.h"
 #include "osdep/timer.h"
 #include "osdep/main-fn.h"
 
@@ -56,7 +59,6 @@
 #include "audio/out/ao.h"
 #include "misc/thread_tools.h"
 #include "sub/osd.h"
-#include "test/tests.h"
 #include "video/out/vo.h"
 
 #include "core.h"
@@ -65,7 +67,7 @@
 #include "screenshot.h"
 
 static const char def_config[] =
-#include "generated/etc/builtin.conf.inc"
+#include "etc/builtin.conf.inc"
 ;
 
 #if HAVE_COCOA
@@ -74,10 +76,6 @@ static const char def_config[] =
 
 #ifndef FULLCONFIG
 #define FULLCONFIG "(missing)\n"
-#endif
-
-#if !HAVE_STDATOMIC
-pthread_mutex_t mp_atomic_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 enum exit_reason {
@@ -101,16 +99,16 @@ const char mp_help_text[] =
 " --h=<string>      print options which contain the given string in their name\n"
 "\n";
 
-static pthread_mutex_t terminal_owner_lock = PTHREAD_MUTEX_INITIALIZER;
+static mp_static_mutex terminal_owner_lock = MP_STATIC_MUTEX_INITIALIZER;
 static struct MPContext *terminal_owner;
 
 static bool cas_terminal_owner(struct MPContext *old, struct MPContext *new)
 {
-    pthread_mutex_lock(&terminal_owner_lock);
+    mp_mutex_lock(&terminal_owner_lock);
     bool r = terminal_owner == old;
     if (r)
         terminal_owner = new;
-    pthread_mutex_unlock(&terminal_owner_lock);
+    mp_mutex_unlock(&terminal_owner_lock);
     return r;
 }
 
@@ -132,8 +130,12 @@ void mp_update_logging(struct MPContext *mpctx, bool preinit)
         }
     }
 
-    if (mp_msg_has_log_file(mpctx->global) && !had_log_file)
-        mp_print_version(mpctx->log, false); // for log-file=... in config files
+    if (mp_msg_has_log_file(mpctx->global) && !had_log_file) {
+        // for log-file=... in config files.
+        // we did flush earlier messages, but they were in a cyclic buffer, so
+        // the version might have been overwritten. ensure we have it.
+        mp_print_version(mpctx->log, false);
+    }
 
     if (enabled && !preinit && mpctx->opts->consolecontrols)
         terminal_setup_getch(mpctx->input);
@@ -142,8 +144,10 @@ void mp_update_logging(struct MPContext *mpctx, bool preinit)
 void mp_print_version(struct mp_log *log, int always)
 {
     int v = always ? MSGL_INFO : MSGL_V;
-    mp_msg(log, v, "%s %s\n built on %s\n",
-           mpv_version, mpv_copyright, mpv_builddate);
+    mp_msg(log, v, "%s %s\n", mpv_version, mpv_copyright);
+    if (strcmp(mpv_builddate, "UNKNOWN"))
+        mp_msg(log, v, " built on %s\n", mpv_builddate);
+    mp_msg(log, v, "libplacebo version: %s\n", PL_VERSION);
     check_library_versions(log, v);
     mp_msg(log, v, "\n");
     // Only in verbose mode.
@@ -192,7 +196,7 @@ void mp_destroy(struct MPContext *mpctx)
     mp_msg_uninit(mpctx->global);
     assert(!mpctx->num_abort_list);
     talloc_free(mpctx->abort_list);
-    pthread_mutex_destroy(&mpctx->abort_lock);
+    mp_mutex_destroy(&mpctx->abort_lock);
     talloc_free(mpctx->mconfig); // destroy before dispatch
     talloc_free(mpctx);
 }
@@ -204,7 +208,7 @@ static bool handle_help_options(struct MPContext *mpctx)
     if (opts->ao_opts->audio_device &&
         strcmp(opts->ao_opts->audio_device, "help") == 0)
     {
-        ao_print_devices(mpctx->global, log);
+        ao_print_devices(mpctx->global, log, mpctx->ao);
         return true;
     }
     if (opts->property_print_help) {
@@ -220,7 +224,7 @@ static int cfg_include(void *ctx, char *filename, int flags)
 {
     struct MPContext *mpctx = ctx;
     char *fname = mp_get_user_path(NULL, mpctx->global, filename);
-    int r = m_config_parse_config_file(mpctx->mconfig, fname, NULL, flags);
+    int r = m_config_parse_config_file(mpctx->mconfig, mpctx->global, fname, NULL, flags);
     talloc_free(fname);
     return r;
 }
@@ -264,7 +268,7 @@ struct MPContext *mp_create(void)
         .play_dir = 1,
     };
 
-    pthread_mutex_init(&mpctx->abort_lock, NULL);
+    mp_mutex_init(&mpctx->abort_lock);
 
     mpctx->global = talloc_zero(mpctx, struct mpv_global);
 
@@ -373,12 +377,9 @@ int mp_initialize(struct MPContext *mpctx, char **options)
 
     check_library_versions(mp_null_log, 0);
 
-#if HAVE_TESTS
-    if (opts->test_mode && opts->test_mode[0])
-        return run_tests(mpctx) ? 1 : -1;
-#endif
-
-    if (!mpctx->playlist->num_entries && !opts->player_idle_mode) {
+    if (!mpctx->playlist->num_entries && !opts->player_idle_mode &&
+        options)
+    {
         // nothing to play
         mp_print_version(mpctx->log, true);
         MP_INFO(mpctx, "%s", mp_help_text);
@@ -418,6 +419,7 @@ int mp_initialize(struct MPContext *mpctx, char **options)
 
 int mpv_main(int argc, char *argv[])
 {
+    mp_thread_set_name("mpv");
     struct MPContext *mpctx = mp_create();
     if (!mpctx)
         return 1;

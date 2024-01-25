@@ -22,14 +22,12 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include <inttypes.h>
 #include <stdbool.h>
+
+#include "config.h"
 #include "common/msg.h"
 #include "audio/out/ao.h"
 #include "internal.h"
-
-#define CA_CFSTR_ENCODING kCFStringEncodingASCII
-
-CFStringRef cfstr_from_cstr(char *str);
-char *cfstr_get_cstr(CFStringRef cfstr);
+#include "osdep/apple_utils.h"
 
 bool check_ca_st(struct ao *ao, int level, OSStatus code, const char *message);
 
@@ -64,7 +62,7 @@ bool ca_asbd_is_better(AudioStreamBasicDescription *req,
                        AudioStreamBasicDescription *old,
                        AudioStreamBasicDescription *new);
 
-int64_t ca_frames_to_us(struct ao *ao, uint32_t frames);
+int64_t ca_frames_to_ns(struct ao *ao, uint32_t frames);
 int64_t ca_get_latency(const AudioTimeStamp *ts);
 
 #if HAVE_COREAUDIO
@@ -73,7 +71,7 @@ OSStatus ca_lock_device(AudioDeviceID device, pid_t *pid);
 OSStatus ca_unlock_device(AudioDeviceID device, pid_t *pid);
 OSStatus ca_disable_mixing(struct ao *ao, AudioDeviceID device, bool *changed);
 OSStatus ca_enable_mixing(struct ao *ao, AudioDeviceID device, bool changed);
-int64_t ca_get_device_latency_us(struct ao *ao, AudioDeviceID device);
+int64_t ca_get_device_latency_ns(struct ao *ao, AudioDeviceID device);
 bool ca_change_physical_format_sync(struct ao *ao, AudioStreamID stream,
                                     AudioStreamBasicDescription change_format);
 #endif

@@ -85,6 +85,7 @@ seekbar
 
     =============   ================================================
     left-click      seek to position
+    mouse wheel     seek forward/backward
     =============   ================================================
 
 time left
@@ -101,6 +102,7 @@ audio and sub
     left-click      cycle audio/sub tracks forward
     right-click     cycle audio/sub tracks backwards
     shift+L-click   show available audio/sub tracks
+    mouse wheel     cycle audio/sub tracks forward/backwards
     =============   ================================================
 
 vol
@@ -174,7 +176,7 @@ Configurable Options
 ``seekbarhandlesize``
     Default: 0.6
 
-    Size ratio of the seek handle if ``seekbarstyle`` is set to ``dimaond``
+    Size ratio of the seek handle if ``seekbarstyle`` is set to ``diamond``
     or ``knob``. This is relative to the full height of the seekbar.
 
 ``seekbarkeyframes``
@@ -209,6 +211,13 @@ Configurable Options
 
     Alpha of the seekable ranges, 0 (opaque) to 255 (fully transparent).
 
+``scrollcontrols``
+    Default: yes
+
+    By default, going up or down with the mouse wheel can trigger certain
+    actions (such as seeking) if the mouse is hovering an OSC element.
+    Set to ``no`` to disable any special mouse wheel behavior.
+
 ``deadzonesize``
     Default: 0.5
 
@@ -235,6 +244,11 @@ Configurable Options
     Default: yes
 
     Enable the OSC when fullscreen
+
+``idlescreen``
+    Default: yes
+
+    Show the mpv logo and message when idle
 
 ``scalewindowed``
     Default: 1.0
@@ -305,10 +319,25 @@ Configurable Options
 
     Show total time instead of time remaining
 
+``remaining_playtime``
+    Default: yes
+
+    Whether the time-remaining display takes speed into account.
+    ``yes`` - how much playback time remains at the current speed.
+    ``no`` - how much video-time remains.
+
 ``timems``
     Default: no
 
     Display timecodes with milliseconds
+
+``tcspace``
+    Default: 100 (allowed: 50-200)
+
+    Adjust space reserved for timecodes (current time and time remaining) in
+    the ``bottombar`` and ``topbar`` layouts. The timecode width depends on the
+    font, and with some fonts the spacing near the timecodes becomes too small.
+    Use values above 100 to increase that spacing, or below 100 to decrease it.
 
 ``visibility``
     Default: auto (auto hide/show on mouse move)
@@ -371,6 +400,13 @@ Configurable Options
     Supports ``left`` and ``right`` which will place the controls on those
     respective sides.
 
+``windowcontrols_title``
+    Default: ${media-title}
+
+    String that supports property expansion that will be displayed as the
+    windowcontrols title.
+    ASS tags are escaped, and newlines and trailing slashes are stripped.
+
 ``greenandgrumpy``
     Default: no
 
@@ -381,6 +417,26 @@ Configurable Options
 
     Update chapter markers positions on duration changes, e.g. live streams.
     The updates are unoptimized - consider disabling it on very low-end systems.
+
+``chapters_osd``, ``playlist_osd``
+    Default: yes
+
+    Whether to display the chapters/playlist at the OSD when left-clicking the
+    next/previous OSC buttons, respectively.
+
+``chapter_fmt``
+    Default: ``Chapter: %s``
+
+    Template for the chapter-name display when hovering the seekbar.
+    Use ``no`` to disable chapter display on hover. Otherwise it's a lua
+    ``string.format`` template and ``%s`` is replaced with the actual name.
+
+``unicodeminus``
+    Default: no
+
+    Use a Unicode minus sign instead of an ASCII hyphen when displaying
+    the remaining playback time.
+
 
 Script Commands
 ~~~~~~~~~~~~~~~
@@ -403,6 +459,10 @@ to set auto mode (the default) with ``b``::
 
     a script-message osc-visibility never
     b script-message osc-visibility auto
+
+``osc-idlescreen``
+    Controls the visibility of the mpv logo on idle. Valid arguments are ``yes``,
+    ``no``, and ``cycle`` to toggle between yes and no.
 
 ``osc-playlist``, ``osc-chapterlist``, ``osc-tracklist``
     Shows a limited view of the respective type of list using the OSC. First

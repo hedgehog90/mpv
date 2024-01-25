@@ -28,7 +28,6 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <fcntl.h>
-#include <pthread.h>
 #include <assert.h>
 
 #include "osdep/io.h"
@@ -54,8 +53,8 @@
 #include "osdep/macosx_events.h"
 #endif
 
-#define input_lock(ictx)    pthread_mutex_lock(&ictx->mutex)
-#define input_unlock(ictx)  pthread_mutex_unlock(&ictx->mutex)
+#define input_lock(ictx)    mp_mutex_lock(&ictx->mutex)
+#define input_unlock(ictx)  mp_mutex_unlock(&ictx->mutex)
 
 #define MP_MAX_KEY_DOWN 4
 
@@ -97,7 +96,7 @@ struct wheel_state {
 };
 
 struct input_ctx {
-    pthread_mutex_t mutex;
+    mp_mutex mutex;
     struct mp_log *log;
     struct mpv_global *global;
     struct m_config_cache *opts_cache;
@@ -171,16 +170,15 @@ struct input_opts {
     // Autorepeat config (be aware of mp_input_set_repeat_info())
     int ar_delay;
     int ar_rate;
-    int use_alt_gr;
-    int use_appleremote;
-    int use_gamepad;
-    int use_media_keys;
-    int default_bindings;
-    int builtin_bindings;
-    int enable_mouse_movements;
-    int vo_key_input;
-    int test;
-    int allow_win_drag;
+    bool use_alt_gr;
+    bool use_gamepad;
+    bool use_media_keys;
+    bool default_bindings;
+    bool builtin_bindings;
+    bool enable_mouse_movements;
+    bool vo_key_input;
+    bool test;
+    bool allow_win_drag;
 };
 
 const struct m_sub_options input_config = {
@@ -190,24 +188,20 @@ const struct m_sub_options input_config = {
         {"input-ar-rate", OPT_INT(ar_rate)},
         {"input-keylist", OPT_PRINT(mp_print_key_list)},
         {"input-cmdlist", OPT_PRINT(mp_print_cmd_list)},
-        {"input-default-bindings", OPT_FLAG(default_bindings)},
-        {"input-builtin-bindings", OPT_FLAG(builtin_bindings)},
-        {"input-test", OPT_FLAG(test)},
+        {"input-default-bindings", OPT_BOOL(default_bindings)},
+        {"input-builtin-bindings", OPT_BOOL(builtin_bindings)},
+        {"input-test", OPT_BOOL(test)},
         {"input-doubleclick-time", OPT_INT(doubleclick_time),
          M_RANGE(0, 1000)},
-        {"input-right-alt-gr", OPT_FLAG(use_alt_gr)},
+        {"input-right-alt-gr", OPT_BOOL(use_alt_gr)},
         {"input-key-fifo-size", OPT_INT(key_fifo_size), M_RANGE(2, 65000)},
-        {"input-cursor", OPT_FLAG(enable_mouse_movements)},
-        {"input-vo-keyboard", OPT_FLAG(vo_key_input)},
-        {"input-media-keys", OPT_FLAG(use_media_keys)},
+        {"input-cursor", OPT_BOOL(enable_mouse_movements)},
+        {"input-vo-keyboard", OPT_BOOL(vo_key_input)},
+        {"input-media-keys", OPT_BOOL(use_media_keys)},
 #if HAVE_SDL2_GAMEPAD
-        {"input-gamepad", OPT_FLAG(use_gamepad)},
+        {"input-gamepad", OPT_BOOL(use_gamepad)},
 #endif
-        {"window-dragging", OPT_FLAG(allow_win_drag)},
-        {"input-x11-keyboard", OPT_REPLACED("input-vo-keyboard")},
-#if HAVE_COCOA
-        {"input-appleremote", OPT_REMOVED("replaced by MediaPlayer support")},
-#endif
+        {"window-dragging", OPT_BOOL(allow_win_drag)},
         {0}
     },
     .size = sizeof(struct input_opts),
@@ -216,19 +210,19 @@ const struct m_sub_options input_config = {
         .doubleclick_time = 300,
         .ar_delay = 200,
         .ar_rate = 40,
-        .use_alt_gr = 1,
-        .enable_mouse_movements = 1,
-        .use_media_keys = 1,
-        .default_bindings = 1,
-        .builtin_bindings = 1,
-        .vo_key_input = 1,
-        .allow_win_drag = 1,
+        .use_alt_gr = true,
+        .enable_mouse_movements = true,
+        .use_media_keys = true,
+        .default_bindings = true,
+        .builtin_bindings = true,
+        .vo_key_input = true,
+        .allow_win_drag = true,
     },
     .change_flags = UPDATE_INPUT,
 };
 
 static const char builtin_input_conf[] =
-#include "generated/etc/input.conf.inc"
+#include "etc/input.conf.inc"
 ;
 
 static bool test_rect(struct mp_rect *rc, int x, int y)
@@ -595,7 +589,7 @@ static void interpret_key(struct input_ctx *ictx, int code, double scale,
             ictx->current_down_cmd = mp_cmd_clone(cmd);
         }
         ictx->last_key_down = code;
-        ictx->last_key_down_time = mp_time_us();
+        ictx->last_key_down_time = mp_time_ns();
         ictx->ar_state = 0;
         mp_input_wakeup(ictx); // possibly start timer for autorepeat
     } else if (state == MP_KEY_STATE_UP) {
@@ -746,6 +740,7 @@ static void mp_input_feed_key(struct input_ctx *ictx, int code, double scale,
             now - ictx->last_doubleclick_time < opts->doubleclick_time / 1000.0)
         {
             if (code >= MP_MBTN_LEFT && code <= MP_MBTN_RIGHT) {
+                now = 0;
                 interpret_key(ictx, code - MP_MBTN_BASE + MP_MBTN_DBL_BASE,
                               1, 1);
             }
@@ -762,10 +757,12 @@ void mp_input_put_key(struct input_ctx *ictx, int code)
     input_unlock(ictx);
 }
 
-void mp_input_put_key_artificial(struct input_ctx *ictx, int code)
+void mp_input_put_key_artificial(struct input_ctx *ictx, int code, double value)
 {
+    if (value == 0.0)
+        return;
     input_lock(ictx);
-    mp_input_feed_key(ictx, code, 1, true);
+    mp_input_feed_key(ictx, code, value, true);
     input_unlock(ictx);
 }
 
@@ -920,19 +917,19 @@ static mp_cmd_t *check_autorepeat(struct input_ctx *ictx)
         ictx->ar_state = -1; // disable
 
     if (ictx->ar_state >= 0) {
-        int64_t t = mp_time_us();
-        if (ictx->last_ar + 2000000 < t)
+        int64_t t = mp_time_ns();
+        if (ictx->last_ar + MP_TIME_S_TO_NS(2) < t)
             ictx->last_ar = t;
         // First time : wait delay
         if (ictx->ar_state == 0
-            && (t - ictx->last_key_down_time) >= opts->ar_delay * 1000)
+            && (t - ictx->last_key_down_time) >= MP_TIME_MS_TO_NS(opts->ar_delay))
         {
             ictx->ar_state = 1;
-            ictx->last_ar = ictx->last_key_down_time + opts->ar_delay * 1000;
+            ictx->last_ar = ictx->last_key_down_time + MP_TIME_MS_TO_NS(opts->ar_delay);
             // Then send rate / sec event
         } else if (ictx->ar_state == 1
-                   && (t - ictx->last_ar) >= 1000000 / opts->ar_rate) {
-            ictx->last_ar += 1000000 / opts->ar_rate;
+                   && (t - ictx->last_ar) >= 1e9 / opts->ar_rate) {
+            ictx->last_ar += 1e9 / opts->ar_rate;
         } else {
             return NULL;
         }
@@ -1327,7 +1324,7 @@ struct input_ctx *mp_input_init(struct mpv_global *global,
 
     ictx->opts = ictx->opts_cache->opts;
 
-    mpthread_mutex_init_recursive(&ictx->mutex);
+    mp_mutex_init_type(&ictx->mutex, MP_MUTEX_RECURSIVE);
 
     // Setup default section, so that it does nothing.
     mp_input_enable_section(ictx, NULL, MP_INPUT_ALLOW_VO_DRAGGING |
@@ -1419,7 +1416,7 @@ void mp_input_uninit(struct input_ctx *ictx)
     close_input_sources(ictx);
     clear_queue(&ictx->cmd_queue);
     talloc_free(ictx->current_down_cmd);
-    pthread_mutex_destroy(&ictx->mutex);
+    mp_mutex_destroy(&ictx->mutex);
     talloc_free(ictx);
 }
 
@@ -1539,7 +1536,7 @@ struct mpv_node mp_input_get_bindings(struct input_ctx *ictx)
 }
 
 struct mp_input_src_internal {
-    pthread_t thread;
+    mp_thread thread;
     bool thread_running;
     bool init_done;
 
@@ -1601,33 +1598,33 @@ static void mp_input_src_kill(struct mp_input_src *src)
             if (src->cancel)
                 src->cancel(src);
             if (src->in->thread_running)
-                pthread_join(src->in->thread, NULL);
+                mp_thread_join(src->in->thread);
             if (src->uninit)
                 src->uninit(src);
             talloc_free(src);
             return;
         }
     }
-    abort();
+    MP_ASSERT_UNREACHABLE();
 }
 
 void mp_input_src_init_done(struct mp_input_src *src)
 {
     assert(!src->in->init_done);
     assert(src->in->thread_running);
-    assert(pthread_equal(src->in->thread, pthread_self()));
+    assert(mp_thread_id_equal(mp_thread_get_id(src->in->thread), mp_thread_current_id()));
     src->in->init_done = true;
     mp_rendezvous(&src->in->init_done, 0);
 }
 
-static void *input_src_thread(void *ptr)
+static MP_THREAD_VOID input_src_thread(void *ptr)
 {
     void **args = ptr;
     struct mp_input_src *src = args[0];
     void (*loop_fn)(struct mp_input_src *src, void *ctx) = args[1];
     void *ctx = args[2];
 
-    mpthread_set_name("input source");
+    mp_thread_set_name("input");
 
     src->in->thread_running = true;
 
@@ -1636,7 +1633,7 @@ static void *input_src_thread(void *ptr)
     if (!src->in->init_done)
         mp_rendezvous(&src->in->init_done, -1);
 
-    return NULL;
+    MP_THREAD_RETURN();
 }
 
 int mp_input_add_thread_src(struct input_ctx *ictx, void *ctx,
@@ -1647,7 +1644,7 @@ int mp_input_add_thread_src(struct input_ctx *ictx, void *ctx,
         return -1;
 
     void *args[] = {src, loop_fn, ctx};
-    if (pthread_create(&src->in->thread, NULL, input_src_thread, args)) {
+    if (mp_thread_create(&src->in->thread, input_src_thread, args)) {
         mp_input_src_kill(src);
         return -1;
     }
@@ -1699,4 +1696,3 @@ void mp_input_set_repeat_info(struct input_ctx *ictx, int rate, int delay)
     ictx->opts->ar_delay = delay;
     input_unlock(ictx);
 }
-

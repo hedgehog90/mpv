@@ -17,15 +17,12 @@
  * License along with mpv.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config.h"
-
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
 #include <sys/ioctl.h>
-#include <pthread.h>
 #include <assert.h>
 
 #include <termios.h>
@@ -33,7 +30,7 @@
 
 #include "osdep/io.h"
 #include "osdep/threads.h"
-#include "osdep/polldev.h"
+#include "osdep/poll_wrapper.h"
 
 #include "common/common.h"
 #include "misc/bstr.h"
@@ -53,8 +50,7 @@
 // buffer all keypresses until ENTER is pressed.
 #define INPUT_TIMEOUT 1000
 
-static volatile struct termios tio_orig;
-static volatile int tio_orig_set;
+static struct termios tio_orig;
 
 static int tty_in = -1, tty_out = -1;
 
@@ -275,8 +271,8 @@ static void process_input(struct input_ctx *input_ctx, bool timeout)
 read_more: ;  /* need more bytes */
 }
 
-static volatile int getch2_active  = 0;
-static volatile int getch2_enabled = 0;
+static int getch2_active  = 0;
+static int getch2_enabled = 0;
 static bool read_terminal;
 
 static void enable_kx(bool enable)
@@ -302,11 +298,6 @@ static void do_activate_getch2(void)
     struct termios tio_new;
     tcgetattr(tty_in,&tio_new);
 
-    if (!tio_orig_set) {
-        tio_orig = tio_new;
-        tio_orig_set = 1;
-    }
-
     tio_new.c_lflag &= ~(ICANON|ECHO); /* Clear ICANON and ECHO. */
     tio_new.c_cc[VMIN] = 1;
     tio_new.c_cc[VTIME] = 0;
@@ -321,12 +312,7 @@ static void do_deactivate_getch2(void)
         return;
 
     enable_kx(false);
-
-    if (tio_orig_set) {
-        // once set, it will never be set again
-        // so we can cast away volatile here
-        tcsetattr(tty_in, TCSANOW, (const struct termios *) &tio_orig);
-    }
+    tcsetattr(tty_in, TCSANOW, &tio_orig);
 
     getch2_active = 0;
 }
@@ -338,7 +324,7 @@ static int setsigaction(int signo, void (*handler) (int),
     struct sigaction sa;
     sa.sa_handler = handler;
 
-    if(do_mask)
+    if (do_mask)
         sigfillset(&sa.sa_mask);
     else
         sigemptyset(&sa.sa_mask);
@@ -362,33 +348,32 @@ static void getch2_poll(void)
         do_deactivate_getch2();
 }
 
-static void stop_sighandler(int signum)
-{
-    do_deactivate_getch2();
-
-    // note: for this signal, we use SA_RESETHAND but do NOT mask signals
-    // so this will invoke the default handler
-    raise(SIGTSTP);
-}
-
-static void continue_sighandler(int signum)
-{
-    // SA_RESETHAND has reset SIGTSTP, so we need to restore it here
-    setsigaction(SIGTSTP, stop_sighandler, SA_RESETHAND, false);
-
-    getch2_poll();
-}
-
-static pthread_t input_thread;
+static mp_thread input_thread;
 static struct input_ctx *input_ctx;
 static int death_pipe[2] = {-1, -1};
+enum { PIPE_STOP, PIPE_CONT };
+static int stop_cont_pipe[2] = {-1, -1};
 
-static void close_death_pipe(void)
+static void stop_cont_sighandler(int signum)
+{
+    int saved_errno = errno;
+    char sig = signum == SIGCONT ? PIPE_CONT : PIPE_STOP;
+    (void)write(stop_cont_pipe[1], &sig, 1);
+    errno = saved_errno;
+}
+
+static void safe_close(int *p)
+{
+    if (*p >= 0)
+        close(*p);
+    *p = -1;
+}
+
+static void close_sig_pipes(void)
 {
     for (int n = 0; n < 2; n++) {
-        if (death_pipe[n] >= 0)
-            close(death_pipe[n]);
-        death_pipe[n] = -1;
+        safe_close(&death_pipe[n]);
+        safe_close(&stop_cont_pipe[n]);
     }
 }
 
@@ -402,27 +387,59 @@ static void close_tty(void)
 
 static void quit_request_sighandler(int signum)
 {
-    do_deactivate_getch2();
-
+    int saved_errno = errno;
     (void)write(death_pipe[1], &(char){1}, 1);
+    errno = saved_errno;
 }
 
-static void *terminal_thread(void *ptr)
+static MP_THREAD_VOID terminal_thread(void *ptr)
 {
-    mpthread_set_name("terminal");
+    mp_thread_set_name("terminal/input");
     bool stdin_ok = read_terminal; // if false, we still wait for SIGTERM
     while (1) {
         getch2_poll();
-        struct pollfd fds[2] = {
+        struct pollfd fds[3] = {
             { .events = POLLIN, .fd = death_pipe[0] },
+            { .events = POLLIN, .fd = stop_cont_pipe[0] },
             { .events = POLLIN, .fd = tty_in }
         };
-        int r = polldev(fds, stdin_ok ? 2 : 1, buf.len ? ESC_TIMEOUT : INPUT_TIMEOUT);
-        if (fds[0].revents)
+        /*
+         * if the process isn't in foreground process group, then on macos
+         * polldev() doesn't rest and gets into 100% cpu usage (see issue #11795)
+         * with read() returning EIO. but we shouldn't quit on EIO either since
+         * the process might be foregrounded later.
+         *
+         * so just avoid poll-ing tty_in when we know the process is not in the
+         * foreground. there's a small race window, but the timeout will take
+         * care of it so it's fine.
+         */
+        bool is_fg = tcgetpgrp(tty_in) == getpgrp();
+        int r = polldev(fds, stdin_ok && is_fg ? 3 : 2, buf.len ? ESC_TIMEOUT : INPUT_TIMEOUT);
+        if (fds[0].revents) {
+            do_deactivate_getch2();
             break;
-        if (fds[1].revents) {
+        }
+        if (fds[1].revents & POLLIN) {
+            int8_t c = -1;
+            (void)read(stop_cont_pipe[0], &c, 1);
+            if (c == PIPE_STOP) {
+                do_deactivate_getch2();
+                if (isatty(STDERR_FILENO)) {
+                    (void)write(STDERR_FILENO, TERM_ESC_RESTORE_CURSOR,
+                                sizeof(TERM_ESC_RESTORE_CURSOR) - 1);
+                }
+                // trying to reset SIGTSTP handler to default and raise it will
+                // result in a race and there's no other way to invoke the
+                // default handler. so just invoke SIGSTOP since it's
+                // effectively the same thing.
+                raise(SIGSTOP);
+            } else if (c == PIPE_CONT) {
+                getch2_poll();
+            }
+        }
+        if (fds[2].revents) {
             int retval = read(tty_in, &buf.b[buf.len], BUF_LEN - buf.len);
-            if (!retval || (retval == -1 && (errno == EBADF || errno == EINVAL)))
+            if (!retval || (retval == -1 && errno != EINTR && errno != EAGAIN && errno != EIO))
                 break; // EOF/closed
             if (retval > 0) {
                 buf.len += retval;
@@ -440,7 +457,7 @@ static void *terminal_thread(void *ptr)
         if (cmd)
             mp_input_queue_cmd(input_ctx, cmd);
     }
-    return NULL;
+    MP_THREAD_RETURN();
 }
 
 void terminal_setup_getch(struct input_ctx *ictx)
@@ -458,16 +475,16 @@ void terminal_setup_getch(struct input_ctx *ictx)
 
     input_ctx = ictx;
 
-    if (pthread_create(&input_thread, NULL, terminal_thread, NULL)) {
+    if (mp_thread_create(&input_thread, terminal_thread, NULL)) {
         input_ctx = NULL;
-        close_death_pipe();
+        close_sig_pipes();
         close_tty();
         return;
     }
 
     setsigaction(SIGINT,  quit_request_sighandler, SA_RESETHAND, false);
-    setsigaction(SIGQUIT, quit_request_sighandler, SA_RESETHAND, false);
-    setsigaction(SIGTERM, quit_request_sighandler, SA_RESETHAND, false);
+    setsigaction(SIGQUIT, quit_request_sighandler, 0, true);
+    setsigaction(SIGTERM, quit_request_sighandler, 0, true);
 }
 
 void terminal_uninit(void)
@@ -486,8 +503,8 @@ void terminal_uninit(void)
 
     if (input_ctx) {
         (void)write(death_pipe[1], &(char){0}, 1);
-        pthread_join(input_thread, NULL);
-        close_death_pipe();
+        mp_thread_join(input_thread);
+        close_sig_pipes();
         input_ctx = NULL;
     }
 
@@ -531,15 +548,22 @@ void terminal_init(void)
     assert(!getch2_enabled);
     getch2_enabled = 1;
 
+    if (mp_make_wakeup_pipe(stop_cont_pipe) < 0) {
+        getch2_enabled = 0;
+        return;
+    }
+
     tty_in = tty_out = open("/dev/tty", O_RDWR | O_CLOEXEC);
     if (tty_in < 0) {
         tty_in = STDIN_FILENO;
         tty_out = STDOUT_FILENO;
     }
 
+    tcgetattr(tty_in, &tio_orig);
+
     // handlers to fix terminal settings
-    setsigaction(SIGCONT, continue_sighandler, 0, true);
-    setsigaction(SIGTSTP, stop_sighandler, SA_RESETHAND, false);
+    setsigaction(SIGCONT, stop_cont_sighandler, 0, true);
+    setsigaction(SIGTSTP, stop_cont_sighandler, 0, true);
     setsigaction(SIGTTIN, SIG_IGN, 0, true);
     setsigaction(SIGTTOU, SIG_IGN, 0, true);
 

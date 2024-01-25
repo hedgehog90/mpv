@@ -105,6 +105,10 @@ elements_matroska = (
                     'DisplayWidth, 54b0, uint',
                     'DisplayHeight, 54ba, uint',
                     'DisplayUnit, 54b2, uint',
+                    'PixelCropTop, 54bb, uint',
+                    'PixelCropLeft, 54cc, uint',
+                    'PixelCropRight, 54dd, uint',
+                    'PixelCropBottom, 54aa, uint',
                     'FrameRate, 2383e3, float',
                     'ColourSpace, 2eb524, binary',
                     'StereoMode, 53b8, uint',
@@ -460,9 +464,9 @@ if __name__ == "__main__":
         parse_one(s, 0, None, 1 << 63)
 
     if sys.argv[1] == '--generate-header':
-        generate_C_header(sys.stdout)
+        generate_C_header(open(sys.argv[2], "w"))
     elif sys.argv[1] == '--generate-definitions':
-        generate_C_definitions(sys.stdout)
+        generate_C_definitions(open(sys.argv[2], "w"))
     else:
         s = open(sys.argv[1], "rb")
         while 1:

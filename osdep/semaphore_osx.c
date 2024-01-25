@@ -23,7 +23,9 @@
 #include <sys/time.h>
 #include <errno.h>
 
-#include "osdep/io.h"
+#include <common/common.h>
+#include "io.h"
+#include "timer.h"
 
 int mp_sem_init(mp_sem_t *sem, int pshared, unsigned int value)
 {
@@ -38,19 +40,19 @@ int mp_sem_init(mp_sem_t *sem, int pshared, unsigned int value)
     if (mp_make_wakeup_pipe(sem->wakeup_pipe) < 0)
         return -1;
     sem->count = 0;
-    pthread_mutex_init(&sem->lock, NULL);
+    mp_mutex_init(&sem->lock);
     return 0;
 }
 
 int mp_sem_wait(mp_sem_t *sem)
 {
-    return mp_sem_timedwait(sem, NULL);
+    return mp_sem_timedwait(sem, -1);
 }
 
 int mp_sem_trywait(mp_sem_t *sem)
 {
     int r = -1;
-    pthread_mutex_lock(&sem->lock);
+    mp_mutex_lock(&sem->lock);
     if (sem->count == 0) {
         char buf[1024];
         ssize_t s = read(sem->wakeup_pipe[0], buf, sizeof(buf));
@@ -61,38 +63,30 @@ int mp_sem_trywait(mp_sem_t *sem)
         sem->count -= 1;
         r = 0;
     }
-    pthread_mutex_unlock(&sem->lock);
+    mp_mutex_unlock(&sem->lock);
     if (r < 0)
         errno = EAGAIN;
     return r;
 }
 
-int mp_sem_timedwait(mp_sem_t *sem, const struct timespec *abs_timeout)
+int mp_sem_timedwait(mp_sem_t *sem, int64_t until)
 {
     while (1) {
         if (!mp_sem_trywait(sem))
             return 0;
 
-        int timeout_ms = -1;
-        if (abs_timeout) {
-            timeout_ms = 0;
-
-            // OSX does not provide clock_gettime() either.
-            struct timeval tv;
-            gettimeofday(&tv, NULL);
-
-            if (abs_timeout->tv_sec >= tv.tv_sec) {
-                long long msec = (abs_timeout->tv_sec - tv.tv_sec) * 1000LL +
-                    abs_timeout->tv_nsec / 1000LL / 1000LL - tv.tv_usec / 1000LL;
-                if (msec > INT_MAX)
-                    msec = INT_MAX;
-                if (msec < 0)
-                    msec = 0;
-                timeout_ms = msec;
-            }
+        int timeout = 0;
+        if (until == -1) {
+            timeout = -1;
+        } else if (until >= 0) {
+            timeout = (until - mp_time_ns()) / MP_TIME_MS_TO_NS(1);
+            timeout = MPCLAMP(timeout, 0, INT_MAX);
+        } else {
+            assert(false && "Invalid mp_time value!");
         }
+
         struct pollfd fd = {.fd = sem->wakeup_pipe[0], .events = POLLIN};
-        int r = poll(&fd, 1, timeout_ms);
+        int r = poll(&fd, 1, timeout);
         if (r < 0)
             return -1;
         if (r == 0) {
@@ -116,7 +110,7 @@ int mp_sem_destroy(mp_sem_t *sem)
 {
     close(sem->wakeup_pipe[0]);
     close(sem->wakeup_pipe[1]);
-    pthread_mutex_destroy(&sem->lock);
+    mp_mutex_destroy(&sem->lock);
     return 0;
 }
 

@@ -31,7 +31,6 @@
 #include <limits.h>
 #include <assert.h>
 
-#include "config.h"
 #include "video/vdpau.h"
 #include "video/vdpau_mixer.h"
 #include "video/hwdec.h"
@@ -86,13 +85,13 @@ struct vdpctx {
     int                                output_surface_w, output_surface_h;
     int                                rotation;
 
-    int                                force_yuv;
+    bool                               force_yuv;
     struct mp_vdpau_mixer             *video_mixer;
-    int                                pullup;
+    bool                               pullup;
     float                              denoise;
     float                              sharpen;
     int                                hqscaling;
-    int                                chroma_deint;
+    bool                               chroma_deint;
     int                                flip_offset_window;
     int                                flip_offset_fs;
     int64_t                            flip_offset_us;
@@ -106,7 +105,7 @@ struct vdpctx {
     int                                query_surface_num;
     VdpTime                            recent_vsync_time;
     float                              user_fps;
-    int                                composite_detect;
+    bool                               composite_detect;
     int                                vsync_interval;
     uint64_t                           last_queue_time;
     uint64_t                           queue_time[MAX_OUTPUT_SURFACES];
@@ -280,7 +279,7 @@ static void resize(struct vo *vo)
     vc->flip_offset_us = vo->opts->fullscreen ?
                          1000LL * vc->flip_offset_fs :
                          1000LL * vc->flip_offset_window;
-    vo_set_queue_params(vo, vc->flip_offset_us, 1);
+    vo_set_queue_params(vo, vc->flip_offset_us * 1000, 1);
 
     if (vc->output_surface_w < vo->dwidth || vc->output_surface_h < vo->dheight ||
         vc->rotation != vo->params->rotate)
@@ -346,7 +345,7 @@ static int win_x11_init_vdpau_flip_queue(struct vo *vo)
                         "vdp_presentation_queue_target_create_x11");
     }
 
-    /* Emperically this seems to be the first call which fails when we
+    /* Empirically this seems to be the first call which fails when we
      * try to reinit after preemption while the user is still switched
      * from X to a virtual terminal (creating the vdp_device initially
      * succeeds, as does creating the flip_target above). This is
@@ -596,11 +595,11 @@ static void generate_osd_part(struct vo *vo, struct sub_bitmaps *imgs)
     case SUBBITMAP_LIBASS:
         format = VDP_RGBA_FORMAT_A8;
         break;
-    case SUBBITMAP_RGBA:
+    case SUBBITMAP_BGRA:
         format = VDP_RGBA_FORMAT_B8G8R8A8;
         break;
     default:
-        abort();
+        MP_ASSERT_UNREACHABLE();
     };
 
     assert(imgs->packed);
@@ -687,7 +686,7 @@ static void draw_osd(struct vo *vo)
 
     bool formats[SUBBITMAP_COUNT] = {
         [SUBBITMAP_LIBASS] = vc->supports_a8,
-        [SUBBITMAP_RGBA] = true,
+        [SUBBITMAP_BGRA] = true,
     };
 
     double pts = vc->current_image ? vc->current_image->pts : 0;
@@ -767,7 +766,7 @@ static void flip_page(struct vo *vo)
     if (vc->user_fps > 0) {
         vc->vsync_interval = 1e9 / vc->user_fps;
     } else if (vc->user_fps == 0) {
-        vc->vsync_interval = vo_get_vsync_interval(vo) * 1000;
+        vc->vsync_interval = vo_get_vsync_interval(vo);
     }
     vc->vsync_interval = MPMAX(vc->vsync_interval, 1);
 
@@ -783,7 +782,7 @@ static void flip_page(struct vo *vo)
     vdp_st = vdp->presentation_queue_get_time(vc->flip_queue, &vdp_time);
     CHECK_VDP_WARNING(vo, "Error when calling vdp_presentation_queue_get_time");
 
-    int64_t rel_pts_ns = (pts_us - mp_time_us()) * 1000;
+    int64_t rel_pts_ns = (pts_us * 1000) - mp_time_ns();
     if (!pts_us || rel_pts_ns < 0)
         rel_pts_ns = 0;
 
@@ -1029,6 +1028,7 @@ static int preinit(struct vo *vo)
         vo_x11_uninit(vo);
         return -1;
     }
+    vc->mpvdp->hwctx.hw_imgfmt = IMGFMT_VDPAU;
 
     vo->hwdec_devs = hwdec_devices_create();
     hwdec_devices_add(vo->hwdec_devs, &vc->mpvdp->hwctx);
@@ -1119,23 +1119,20 @@ const struct vo_driver video_out_vdpau = {
     .uninit = uninit,
     .priv_size = sizeof(struct vdpctx),
     .options = (const struct m_option []){
-        {"chroma-deint", OPT_FLAG(chroma_deint), OPTDEF_INT(1)},
-        {"pullup", OPT_FLAG(pullup)},
+        {"chroma-deint", OPT_BOOL(chroma_deint), OPTDEF_INT(1)},
+        {"pullup", OPT_BOOL(pullup)},
         {"denoise", OPT_FLOAT(denoise), M_RANGE(0, 1)},
         {"sharpen", OPT_FLOAT(sharpen), M_RANGE(-1, 1)},
         {"hqscaling", OPT_INT(hqscaling), M_RANGE(0, 9)},
         {"fps", OPT_FLOAT(user_fps)},
-        {"composite-detect", OPT_FLAG(composite_detect), OPTDEF_INT(1)},
+        {"composite-detect", OPT_BOOL(composite_detect), OPTDEF_INT(1)},
         {"queuetime-windowed", OPT_INT(flip_offset_window), OPTDEF_INT(50)},
         {"queuetime-fs", OPT_INT(flip_offset_fs), OPTDEF_INT(50)},
         {"output-surfaces", OPT_INT(num_output_surfaces),
             M_RANGE(2, MAX_OUTPUT_SURFACES), OPTDEF_INT(3)},
         {"colorkey", OPT_COLOR(colorkey),
             .defval = &(const struct m_color){.r = 2, .g = 5, .b = 7, .a = 255}},
-        {"force-yuv", OPT_FLAG(force_yuv)},
-        {"queuetime_windowed", OPT_REPLACED("queuetime-windowed")},
-        {"queuetime_fs", OPT_REPLACED("queuetime-fs")},
-        {"output_surfaces", OPT_REPLACED("output-surfaces")},
+        {"force-yuv", OPT_BOOL(force_yuv)},
         {NULL},
     },
     .options_prefix = "vo-vdpau",

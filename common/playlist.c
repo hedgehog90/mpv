@@ -16,11 +16,11 @@
  */
 
 #include <assert.h>
-#include "config.h"
 #include "playlist.h"
 #include "common/common.h"
 #include "common/global.h"
 #include "common/msg.h"
+#include "misc/random.h"
 #include "mpv_talloc.h"
 #include "options/path.h"
 
@@ -142,12 +142,20 @@ void playlist_add_file(struct playlist *pl, const char *filename)
     playlist_add(pl, playlist_entry_new(filename));
 }
 
+void playlist_populate_playlist_path(struct playlist *pl, const char *path)
+{
+    for (int n = 0; n < pl->num_entries; n++) {
+        struct playlist_entry *e = pl->entries[n];
+        e->playlist_path = talloc_strdup(e, path);
+    }
+}
+
 void playlist_shuffle(struct playlist *pl)
 {
     for (int n = 0; n < pl->num_entries; n++)
         pl->entries[n]->original_index = n;
     for (int n = 0; n < pl->num_entries - 1; n++) {
-        int j = (int)((double)(pl->num_entries - n) * rand() / (RAND_MAX + 1.0));
+        size_t j = (size_t)((pl->num_entries - n) * mp_rand_next_double());
         MPSWAP(struct playlist_entry *, pl->entries[n], pl->entries[n + j]);
     }
     playlist_update_indexes(pl, 0, -1);
@@ -206,6 +214,74 @@ struct playlist_entry *playlist_entry_get_rel(struct playlist_entry *e,
     return playlist_entry_from_index(e->pl, e->pl_index + direction);
 }
 
+struct playlist_entry *playlist_get_first_in_next_playlist(struct playlist *pl,
+                                                           int direction)
+{
+    struct playlist_entry *entry = playlist_get_next(pl, direction);
+    if (!entry)
+        return NULL;
+
+    while (entry && entry->playlist_path && pl->current->playlist_path &&
+           strcmp(entry->playlist_path, pl->current->playlist_path) == 0)
+        entry = playlist_entry_get_rel(entry, direction);
+
+    if (direction < 0)
+        entry = playlist_get_first_in_same_playlist(entry,
+                                                    pl->current->playlist_path);
+
+    return entry;
+}
+
+struct playlist_entry *playlist_get_first_in_same_playlist(
+    struct playlist_entry *entry, char *current_playlist_path)
+{
+    void *tmp = talloc_new(NULL);
+
+    if (!entry || !entry->playlist_path)
+        goto exit;
+
+    // Don't go to the beginning of the playlist when the current playlist-path
+    // starts with the previous playlist-path, e.g. with mpv --loop-playlist
+    // archive_dir/, which expands to archive_dir/{1..9}.zip, the current
+    // playlist path "archive_dir/1.zip" begins with the playlist-path
+    // "archive_dir/" of {2..9}.zip, so go to 9.zip instead of 2.zip. But
+    // playlist-prev-playlist from e.g. the directory "foobar" to the directory
+    // "foo" should still go to the first entry in "foo/", and this should all
+    // work whether mpv's arguments have trailing slashes or not, e.g. in the
+    // first example:
+    // mpv archive_dir results in the playlist-paths "archive_dir/1.zip" and
+    // "archive_dir"
+    // mpv archive_dir/ in "archive_dir/1.zip" and "archive_dir/"
+    // mpv archive_dir// in "archive_dir//1.zip" and "archive_dir//"
+    // Always adding a separator to entry->playlist_path to fix the foobar foo
+    // case would break the previous 2 cases instead. Stripping the separator
+    // from entry->playlist_path if present and appending it again makes this
+    // work in all cases.
+    char* playlist_path = talloc_strdup(tmp, entry->playlist_path);
+    mp_path_strip_trailing_separator(playlist_path);
+    if (bstr_startswith(bstr0(current_playlist_path),
+                        bstr0(talloc_strdup_append(playlist_path, "/")))
+#if HAVE_DOS_PATHS
+        ||
+        bstr_startswith(bstr0(current_playlist_path),
+                        bstr0(talloc_strdup_append(playlist_path, "\\")))
+#endif
+       )
+        goto exit;
+
+    struct playlist_entry *prev = playlist_entry_get_rel(entry, -1);
+
+    while (prev && prev->playlist_path &&
+           strcmp(prev->playlist_path, entry->playlist_path) == 0) {
+        entry = prev;
+        prev = playlist_entry_get_rel(entry, -1);
+    }
+
+exit:
+    talloc_free(tmp);
+    return entry;
+}
+
 void playlist_add_base_path(struct playlist *pl, bstr base_path)
 {
     if (base_path.len == 0 || bstrcmp0(base_path, ".") == 0)
@@ -217,19 +293,6 @@ void playlist_add_base_path(struct playlist *pl, bstr base_path)
             talloc_free(e->filename);
             e->filename = new_file;
         }
-    }
-}
-
-// Add redirected_from as new redirect entry to each item in pl.
-void playlist_add_redirect(struct playlist *pl, const char *redirected_from)
-{
-    for (int n = 0; n < pl->num_entries; n++) {
-        struct playlist_entry *e = pl->entries[n];
-        if (e->num_redirects >= 10) // arbitrary limit for sanity
-            continue;
-        char *s = talloc_strdup(e, redirected_from);
-        if (s)
-            MP_TARRAY_APPEND(e, e->redirects, e->num_redirects, s);
     }
 }
 
@@ -328,6 +391,7 @@ struct playlist *playlist_parse_file(const char *file, struct mp_cancel *cancel,
     struct playlist *ret = NULL;
     if (d && d->playlist) {
         ret = talloc_zero(NULL, struct playlist);
+        playlist_populate_playlist_path(d->playlist, file);
         playlist_transfer_entries(ret, d->playlist);
         if (d->filetype && strcmp(d->filetype, "hls") == 0) {
             mp_warn(log, "This might be a HLS stream. For correct operation, "

@@ -61,12 +61,14 @@ static const m_option_t style_opts[] = {
     {"align-y", OPT_CHOICE(align_y,
         {"top", -1}, {"center", 0}, {"bottom", +1})},
     {"blur", OPT_FLOAT(blur), M_RANGE(0, 20)},
-    {"bold", OPT_FLAG(bold)},
-    {"italic", OPT_FLAG(italic)},
+    {"bold", OPT_BOOL(bold)},
+    {"italic", OPT_BOOL(italic)},
     {"justify", OPT_CHOICE(justify,
         {"auto", 0}, {"left", 1}, {"center", 2}, {"right", 3})},
     {"font-provider", OPT_CHOICE(font_provider,
         {"auto", 0}, {"none", 1}, {"fontconfig", 2}), .flags = UPDATE_SUB_HARD},
+    {"fonts-dir", OPT_STRING(fonts_dir),
+        .flags = M_OPT_FILE | UPDATE_SUB_HARD},
     {0}
 };
 
@@ -127,7 +129,7 @@ struct osd_state *osd_create(struct mpv_global *global)
         .force_video_pts = MP_NOPTS_VALUE,
         .stats = stats_ctx_create(osd, global, "osd"),
     };
-    pthread_mutex_init(&osd->lock, NULL);
+    mp_mutex_init(&osd->lock);
     osd->opts = osd->opts_cache->opts;
 
     for (int n = 0; n < MAX_OSD_PARTS; n++) {
@@ -154,13 +156,13 @@ void osd_free(struct osd_state *osd)
         return;
     osd_destroy_backend(osd);
     talloc_free(osd->objs[OSDTYPE_EXTERNAL2]->external2);
-    pthread_mutex_destroy(&osd->lock);
+    mp_mutex_destroy(&osd->lock);
     talloc_free(osd);
 }
 
 void osd_set_text(struct osd_state *osd, const char *text)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     struct osd_object *osd_obj = osd->objs[OSDTYPE_OSD];
     if (!text)
         text = "";
@@ -170,32 +172,32 @@ void osd_set_text(struct osd_state *osd, const char *text)
         osd_obj->osd_changed = true;
         osd->want_redraw_notification = true;
     }
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
 }
 
 void osd_set_sub(struct osd_state *osd, int index, struct dec_sub *dec_sub)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     if (index >= 0 && index < 2) {
         struct osd_object *obj = osd->objs[OSDTYPE_SUB + index];
         obj->sub = dec_sub;
         obj->vo_change_id += 1;
     }
     osd->want_redraw_notification = true;
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
 }
 
 bool osd_get_render_subs_in_filter(struct osd_state *osd)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     bool r = osd->render_subs_in_filter;
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
     return r;
 }
 
 void osd_set_render_subs_in_filter(struct osd_state *osd, bool s)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     if (osd->render_subs_in_filter != s) {
         osd->render_subs_in_filter = s;
 
@@ -205,27 +207,22 @@ void osd_set_render_subs_in_filter(struct osd_state *osd, bool s)
         for (int n = 0; n < MAX_OSD_PARTS; n++)
             osd->objs[n]->vo_change_id = change_id + 1;
     }
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
 }
 
 void osd_set_force_video_pts(struct osd_state *osd, double video_pts)
 {
-    pthread_mutex_lock(&osd->lock);
-    osd->force_video_pts = video_pts;
-    pthread_mutex_unlock(&osd->lock);
+    atomic_store(&osd->force_video_pts, video_pts);
 }
 
 double osd_get_force_video_pts(struct osd_state *osd)
 {
-    pthread_mutex_lock(&osd->lock);
-    double pts = osd->force_video_pts;
-    pthread_mutex_unlock(&osd->lock);
-    return pts;
+    return atomic_load(&osd->force_video_pts);
 }
 
 void osd_set_progbar(struct osd_state *osd, struct osd_progbar_state *s)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     struct osd_object *osd_obj = osd->objs[OSDTYPE_OSD];
     osd_obj->progbar_state.type = s->type;
     osd_obj->progbar_state.value = s->value;
@@ -237,18 +234,18 @@ void osd_set_progbar(struct osd_state *osd, struct osd_progbar_state *s)
     }
     osd_obj->osd_changed = true;
     osd->want_redraw_notification = true;
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
 }
 
 void osd_set_external2(struct osd_state *osd, struct sub_bitmaps *imgs)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     struct osd_object *obj = osd->objs[OSDTYPE_EXTERNAL2];
     talloc_free(obj->external2);
     obj->external2 = sub_bitmaps_copy(NULL, imgs);
     obj->vo_change_id += 1;
     osd->want_redraw_notification = true;
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
 }
 
 static void check_obj_resize(struct osd_state *osd, struct mp_osd_res res,
@@ -256,6 +253,7 @@ static void check_obj_resize(struct osd_state *osd, struct mp_osd_res res,
 {
     if (!osd_res_equals(res, obj->vo_res)) {
         obj->vo_res = res;
+        obj->osd_changed = true;
         mp_client_broadcast_event_external(osd->global->client_api,
                                            MP_EVENT_WIN_RESIZE, NULL);
     }
@@ -270,11 +268,11 @@ static void check_obj_resize(struct osd_state *osd, struct mp_osd_res res,
 // Unnecessary for anything else.
 void osd_resize(struct osd_state *osd, struct mp_osd_res res)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     int types[] = {OSDTYPE_OSD, OSDTYPE_EXTERNAL, OSDTYPE_EXTERNAL2, -1};
     for (int n = 0; types[n] >= 0; n++)
         check_obj_resize(osd, res, osd->objs[types[n]]);
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
 }
 
 static struct sub_bitmaps *render_object(struct osd_state *osd,
@@ -284,14 +282,14 @@ static struct sub_bitmaps *render_object(struct osd_state *osd,
 {
     int format = SUBBITMAP_LIBASS;
     if (!sub_formats[format] || osd->opts->force_rgba_osd)
-        format = SUBBITMAP_RGBA;
+        format = SUBBITMAP_BGRA;
 
     struct sub_bitmaps *res = NULL;
 
     check_obj_resize(osd, osdres, obj);
 
     if (obj->type == OSDTYPE_SUB) {
-        if (obj->sub)
+        if (obj->sub && sub_is_primary_visible(obj->sub))
             res = sub_get_bitmaps(obj->sub, obj->vo_res, format, video_pts);
     } else if (obj->type == OSDTYPE_SUB2) {
         if (obj->sub && sub_is_secondary_visible(obj->sub))
@@ -328,15 +326,16 @@ struct sub_bitmap_list *osd_render(struct osd_state *osd, struct mp_osd_res res,
                                    double video_pts, int draw_flags,
                                    const bool formats[SUBBITMAP_COUNT])
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
 
     struct sub_bitmap_list *list = talloc_zero(NULL, struct sub_bitmap_list);
     list->change_id = 1;
     list->w = res.w;
     list->h = res.h;
 
-    if (osd->force_video_pts != MP_NOPTS_VALUE)
-        video_pts = osd->force_video_pts;
+    double force_video_pts = atomic_load(&osd->force_video_pts);
+    if (force_video_pts != MP_NOPTS_VALUE)
+        video_pts = force_video_pts;
 
     if (draw_flags & OSD_DRAW_SUB_FILTER)
         draw_flags |= OSD_DRAW_SUB_ONLY;
@@ -384,7 +383,7 @@ struct sub_bitmap_list *osd_render(struct osd_state *osd, struct mp_osd_res res,
     if (!(draw_flags & OSD_DRAW_SUB_FILTER))
         osd->want_redraw_notification = false;
 
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
     return list;
 }
 
@@ -434,7 +433,7 @@ void osd_draw_on_image_p(struct osd_state *osd, struct mp_osd_res res,
         return; // on OOM, skip
 
     // Need to lock for the dumb osd->draw_cache thing.
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
 
     if (!osd->draw_cache)
         osd->draw_cache = mp_draw_sub_alloc(osd, osd->global);
@@ -447,7 +446,7 @@ void osd_draw_on_image_p(struct osd_state *osd, struct mp_osd_res res,
 
     stats_time_end(osd->stats, "draw-bmp");
 
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
 
     talloc_free(list);
 }
@@ -467,29 +466,29 @@ struct mp_osd_res osd_res_from_image_params(const struct mp_image_params *p)
 // Typically called to react to OSD style changes.
 void osd_changed(struct osd_state *osd)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     osd->objs[OSDTYPE_OSD]->osd_changed = true;
     osd->want_redraw_notification = true;
     // Done here for a lack of a better place.
     m_config_cache_update(osd->opts_cache);
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
 }
 
 bool osd_query_and_reset_want_redraw(struct osd_state *osd)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     bool r = osd->want_redraw_notification;
     osd->want_redraw_notification = false;
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
     return r;
 }
 
 struct mp_osd_res osd_get_vo_res(struct osd_state *osd)
 {
-    pthread_mutex_lock(&osd->lock);
+    mp_mutex_lock(&osd->lock);
     // Any OSDTYPE is fine; but it mustn't be a subtitle one (can have lower res.)
     struct mp_osd_res res = osd->objs[OSDTYPE_OSD]->vo_res;
-    pthread_mutex_unlock(&osd->lock);
+    mp_mutex_unlock(&osd->lock);
     return res;
 }
 
@@ -506,8 +505,10 @@ void osd_rescale_bitmaps(struct sub_bitmaps *imgs, int frame_w, int frame_h,
     int vidh = res.h - res.mt - res.mb;
     double xscale = (double)vidw / frame_w;
     double yscale = (double)vidh / frame_h;
-    if (compensate_par < 0)
+    if (compensate_par < 0) {
+        assert(res.display_par);
         compensate_par = xscale / yscale / res.display_par;
+    }
     if (compensate_par > 0)
         xscale /= compensate_par;
     int cx = vidw / 2 - (int)(frame_w * xscale) / 2;
@@ -548,7 +549,6 @@ struct sub_bitmaps *sub_bitmaps_copy(struct sub_bitmap_copy_cache **p_cache,
     assert(in->packed && in->packed->bufs[0]);
 
     res->packed = mp_image_new_ref(res->packed);
-    MP_HANDLE_OOM(res->packed);
     talloc_steal(res, res->packed);
 
     res->parts = NULL;

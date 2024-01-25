@@ -23,7 +23,7 @@
 #include "misc/bstr.h"
 #include "options/m_option.h"
 
-#define MP_CMD_DEF_MAX_ARGS 9
+#define MP_CMD_DEF_MAX_ARGS 11
 #define MP_CMD_OPT_ARG M_OPT_OPTIONAL_PARAM
 
 struct mp_log;
@@ -85,6 +85,7 @@ enum mp_cmd_flags {
 struct mp_cmd_arg {
     const struct m_option *type;
     union {
+        bool b;
         int i;
         int64_t i64;
         float f;

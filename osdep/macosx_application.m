@@ -16,7 +16,6 @@
  */
 
 #include <stdio.h>
-#include <pthread.h>
 #include "config.h"
 #include "mpv_talloc.h"
 
@@ -27,7 +26,6 @@
 #include "options/options.h"
 
 #import "osdep/macosx_application_objc.h"
-#include "osdep/macosx_compat.h"
 #import "osdep/macosx_events_objc.h"
 #include "osdep/threads.h"
 #include "osdep/main-fn.h"
@@ -62,16 +60,17 @@ const struct m_sub_options macos_conf = {
         {"macos-fs-animation-duration",
             OPT_CHOICE(macos_fs_animation_duration, {"default", -1}),
             M_RANGE(0, 1000)},
-        {"macos-force-dedicated-gpu", OPT_FLAG(macos_force_dedicated_gpu)},
+        {"macos-force-dedicated-gpu", OPT_BOOL(macos_force_dedicated_gpu)},
         {"macos-app-activation-policy", OPT_CHOICE(macos_app_activation_policy,
             {"regular", 0}, {"accessory", 1}, {"prohibited", 2})},
         {"macos-geometry-calculation", OPT_CHOICE(macos_geometry_calculation,
             {"visible", FRAME_VISIBLE}, {"whole", FRAME_WHOLE})},
+        {"macos-render-timer", OPT_CHOICE(macos_render_timer,
+            {"callback", RENDER_TIMER_CALLBACK}, {"precise", RENDER_TIMER_PRECISE},
+            {"system", RENDER_TIMER_SYSTEM})},
         {"cocoa-cb-sw-renderer", OPT_CHOICE(cocoa_cb_sw_renderer,
             {"auto", -1}, {"no", 0}, {"yes", 1})},
-        {"cocoa-cb-10bit-context", OPT_FLAG(cocoa_cb_10bit_context)},
-        {"macos-title-bar-style", OPT_REMOVED("Split into --macos-title-bar-appearance "
-                     "and --macos-title-bar-material")},
+        {"cocoa-cb-10bit-context", OPT_BOOL(cocoa_cb_10bit_context)},
         {0}
     },
     .size = sizeof(struct macos_opts),
@@ -79,7 +78,7 @@ const struct m_sub_options macos_conf = {
         .macos_title_bar_color = {0, 0, 0, 0},
         .macos_fs_animation_duration = -1,
         .cocoa_cb_sw_renderer = -1,
-        .cocoa_cb_10bit_context = 1
+        .cocoa_cb_10bit_context = true
     },
 };
 
@@ -87,7 +86,7 @@ const struct m_sub_options macos_conf = {
 // running in libmpv mode, and cocoa_main() was never called.
 static bool application_instantiated;
 
-static pthread_t playback_thread_id;
+static mp_thread playback_thread_id;
 
 @interface Application ()
 {
@@ -147,7 +146,7 @@ static void terminate_cocoa_application(void)
 }
 
 static const char macosx_icon[] =
-#include "generated/TOOLS/osxbundle/mpv.app/Contents/Resources/icon.icns.inc"
+#include "TOOLS/osxbundle/icon.icns.inc"
 ;
 
 - (NSImage *)getMPVIcon
@@ -177,8 +176,7 @@ static const char macosx_icon[] =
 - (void)processEvent:(struct mpv_event *)event
 {
 #if HAVE_MACOS_TOUCHBAR
-    if ([self respondsToSelector:@selector(touchBar)])
-        [(TouchBar *)self.touchBar processEvent:event];
+    [(TouchBar *)self.touchBar processEvent:event];
 #endif
     if (_cocoa_cb) {
         [_cocoa_cb processEvent:event];
@@ -192,12 +190,12 @@ static const char macosx_icon[] =
 #endif
 }
 
-- (const struct m_sub_options *)getMacOSConf
++ (const struct m_sub_options *)getMacOSConf
 {
     return &macos_conf;
 }
 
-- (const struct m_sub_options *)getVoSubConf
++ (const struct m_sub_options *)getVoSubConf
 {
     return &vo_sub_opts;
 }
@@ -272,9 +270,9 @@ static void cocoa_run_runloop(void)
     [pool drain];
 }
 
-static void *playback_thread(void *ctx_obj)
+static MP_THREAD_VOID playback_thread(void *ctx_obj)
 {
-    mpthread_set_name("playback core (OSX)");
+    mp_thread_set_name("core/playback");
     @autoreleasepool {
         struct playback_thread_ctx *ctx = (struct playback_thread_ctx*) ctx_obj;
         int r = mpv_main(*ctx->argc, *ctx->argv);
@@ -312,10 +310,10 @@ static void init_cocoa_application(bool regular)
     });
 }
 
-static bool bundle_started_from_finder(char **argv)
+static bool bundle_started_from_finder()
 {
-    NSString *binary_path = [NSString stringWithUTF8String:argv[0]];
-    return [binary_path hasSuffix:@"mpv-bundle"];
+    NSString* bundle = [[[NSProcessInfo processInfo] environment] objectForKey:@"MPVBUNDLE"];
+    return [bundle isEqual:@"true"];
 }
 
 static bool is_psn_argument(char *arg_to_check)
@@ -340,7 +338,6 @@ static void setup_bundle(int *argc, char *argv[])
                                                     @"/opt/local/bin",
                                                     @"/opt/local/sbin"];
     setenv("PATH", [path_new UTF8String], 1);
-    setenv("MPVBUNDLE", "true", 1);
 }
 
 int cocoa_main(int argc, char *argv[])
@@ -353,7 +350,7 @@ int cocoa_main(int argc, char *argv[])
         ctx.argc     = &argc;
         ctx.argv     = &argv;
 
-        if (bundle_started_from_finder(argv)) {
+        if (bundle_started_from_finder()) {
             setup_bundle(&argc, argv);
             init_cocoa_application(true);
         } else {
@@ -363,7 +360,7 @@ int cocoa_main(int argc, char *argv[])
             init_cocoa_application(false);
         }
 
-        pthread_create(&playback_thread_id, NULL, playback_thread, &ctx);
+        mp_thread_create(&playback_thread_id, playback_thread, &ctx);
         [[EventsResponder sharedInstance] waitForInputContext];
         cocoa_run_runloop();
 
@@ -372,8 +369,7 @@ int cocoa_main(int argc, char *argv[])
         fprintf(stderr, "There was either a problem "
                 "initializing Cocoa or the Runloop was stopped unexpectedly. "
                 "Please report this issues to a developer.\n");
-        pthread_join(playback_thread_id, NULL);
+        mp_thread_join(playback_thread_id);
         return 1;
     }
 }
-

@@ -21,6 +21,7 @@
 
 #include <libavutil/common.h>
 #include <libavutil/error.h>
+#include <libavutil/mathematics.h>
 
 #include "mpv_talloc.h"
 #include "misc/bstr.h"
@@ -120,10 +121,41 @@ bool mp_rect_intersection(struct mp_rect *rc, const struct mp_rect *rc2)
     return rc->x1 > rc->x0 && rc->y1 > rc->y0;
 }
 
-bool mp_rect_equals(struct mp_rect *rc1, struct mp_rect *rc2)
+bool mp_rect_equals(const struct mp_rect *rc1, const struct mp_rect *rc2)
 {
     return rc1->x0 == rc2->x0 && rc1->y0 == rc2->y0 &&
            rc1->x1 == rc2->x1 && rc1->y1 == rc2->y1;
+}
+
+// Rotate mp_rect by 90 degrees increments
+void mp_rect_rotate(struct mp_rect *rc, int w, int h, int rotation)
+{
+    rotation %= 360;
+
+    if (rotation >= 180) {
+        rotation -= 180;
+        MPSWAP(int, rc->x0, rc->x1);
+        MPSWAP(int, rc->y0, rc->y1);
+    }
+
+    if (rotation == 90) {
+        *rc = (struct mp_rect) {
+            .x0 = rc->y1,
+            .y0 = rc->x0,
+            .x1 = rc->y0,
+            .y1 = rc->x1,
+        };
+    }
+
+    if (rc->x1 < rc->x0) {
+        rc->x0 = w - rc->x0;
+        rc->x1 = w - rc->x1;
+    }
+
+    if (rc->y1 < rc->y0) {
+        rc->y0 = h - rc->y0;
+        rc->y1 = h - rc->y1;
+    }
 }
 
 // Compute rc1-rc2, put result in res_array, return number of rectangles in
@@ -372,4 +404,10 @@ uint32_t mp_round_next_power_of_2(uint32_t v)
         return v;
     int l = mp_log2(v) + 1;
     return l == 32 ? 0 : (uint32_t)1 << l;
+}
+
+int mp_lcm(int x, int y)
+{
+    assert(x && y);
+    return x * (y / av_gcd(x, y));
 }

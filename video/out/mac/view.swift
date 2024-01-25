@@ -33,7 +33,7 @@ class View: NSView {
         super.init(frame: frame)
         autoresizingMask = [.width, .height]
         wantsBestResolutionOpenGLSurface = true
-        registerForDraggedTypes([ .fileURLCompat, .URLCompat, .string ])
+        registerForDraggedTypes([ .fileURL, .URL, .string ])
     }
 
     required init?(coder: NSCoder) {
@@ -58,14 +58,14 @@ class View: NSView {
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard let types = sender.draggingPasteboard.types else { return [] }
-        if types.contains(.fileURLCompat) || types.contains(.URLCompat) || types.contains(.string) {
+        if types.contains(.fileURL) || types.contains(.URL) || types.contains(.string) {
             return .copy
         }
         return []
     }
 
     func isURL(_ str: String) -> Bool {
-        // force unwrapping is fine here, regex is guarnteed to be valid
+        // force unwrapping is fine here, regex is guaranteed to be valid
         let regex = try! NSRegularExpression(pattern: "^(https?|ftp)://[^\\s/$.?#].[^\\s]*$",
                                              options: .caseInsensitive)
         let isURL = regex.numberOfMatches(in: str,
@@ -78,10 +78,10 @@ class View: NSView {
         let pb = sender.draggingPasteboard
         guard let types = pb.types else { return false }
 
-        if types.contains(.fileURLCompat) || types.contains(.URLCompat) {
+        if types.contains(.fileURL) || types.contains(.URL) {
             if let urls = pb.readObjects(forClasses: [NSURL.self]) as? [URL] {
                 let files = urls.map { $0.absoluteString }
-                EventsResponder.sharedInstance().handleFilesArray(files)
+                mpv?.open(files: files)
                 return true
             }
         } else if types.contains(.string) {
@@ -97,7 +97,7 @@ class View: NSView {
                     filesArray.append(path)
                 }
             }
-            EventsResponder.sharedInstance().handleFilesArray(filesArray)
+            mpv?.open(files: filesArray)
             return true
         }
         return false
@@ -127,7 +127,7 @@ class View: NSView {
             cocoa_put_key_with_modifiers(SWIFT_KEY_MOUSE_LEAVE, 0)
         }
         common.titleBar?.hide()
-        common.setCursorVisiblility(true)
+        common.setCursorVisibility(true)
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -224,10 +224,10 @@ class View: NSView {
             cmd = delta > 0 ? SWIFT_WHEEL_UP : SWIFT_WHEEL_DOWN
         } else {
             delta = Double(event.deltaX) * 0.1
-            cmd = delta > 0 ? SWIFT_WHEEL_RIGHT : SWIFT_WHEEL_LEFT
+            cmd = delta > 0 ? SWIFT_WHEEL_LEFT : SWIFT_WHEEL_RIGHT
         }
 
-        mpv?.putAxis(cmd, delta: abs(delta))
+        mpv?.putAxis(cmd, modifiers: event.modifierFlags, delta: abs(delta))
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -246,7 +246,7 @@ class View: NSView {
             if abs(deltaY) >= abs(deltaX) {
                 mpkey = deltaY > 0 ? SWIFT_WHEEL_UP : SWIFT_WHEEL_DOWN
             } else {
-                mpkey = deltaX > 0 ? SWIFT_WHEEL_RIGHT : SWIFT_WHEEL_LEFT
+                mpkey = deltaX > 0 ? SWIFT_WHEEL_LEFT : SWIFT_WHEEL_RIGHT
             }
 
             cocoa_put_key_with_modifiers(mpkey, Int32(modifiers.rawValue))

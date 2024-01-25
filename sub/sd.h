@@ -9,14 +9,18 @@
 #define SUB_GAP_THRESHOLD 0.210
 // don't change timings if durations are smaller
 #define SUB_GAP_KEEP 0.4
+// slight offset when sub seeking or sub stepping
+#define SUB_SEEK_OFFSET 0.01
 
 struct sd {
     struct mpv_global *global;
     struct mp_log *log;
     struct mp_subtitle_opts *opts;
+    struct mp_subtitle_shared_opts *shared_opts;
 
     const struct sd_functions *driver;
     void *priv;
+    int order;
 
     struct attachment_list *attachments;
     struct mp_codec_params *codec;
@@ -46,8 +50,8 @@ struct sd_functions {
 
 // lavc_conv.c
 struct lavc_conv;
-struct lavc_conv *lavc_conv_create(struct mp_log *log, const char *codec_name,
-                                   char *extradata, int extradata_len);
+struct lavc_conv *lavc_conv_create(struct mp_log *log,
+                                   const struct mp_codec_params *mp_codec);
 char *lavc_conv_get_extradata(struct lavc_conv *priv);
 char **lavc_conv_decode(struct lavc_conv *priv, struct demux_packet *packet,
                         double *sub_pts, double *sub_duration);

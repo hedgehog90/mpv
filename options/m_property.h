@@ -86,6 +86,11 @@ enum mp_property_action {
     // Pass down an action to a sub-property.
     //  arg: struct m_property_action_arg*
     M_PROPERTY_KEY_ACTION,
+
+    // Delete a value.
+    // Most properties do not implement this.
+    //  arg: (ignored)
+    M_PROPERTY_DELETE,
 };
 
 // Argument for M_PROPERTY_SWITCH
@@ -102,6 +107,9 @@ struct m_property_action_arg {
 };
 
 enum mp_property_return {
+    // Returned from validator if action should be executed.
+    M_PROPERTY_VALID = 2,
+
     // Returned on success.
     M_PROPERTY_OK = 1,
 
@@ -171,7 +179,7 @@ char* m_properties_expand_string(const struct m_property *prop_list,
                                  const char *str, void *ctx);
 
 // Trivial helpers for implementing properties.
-int m_property_flag_ro(int action, void* arg, int var);
+int m_property_bool_ro(int action, void* arg, bool var);
 int m_property_int_ro(int action, void* arg, int var);
 int m_property_int64_ro(int action, void* arg, int64_t var);
 int m_property_float_ro(int action, void* arg, float var);
@@ -202,11 +210,13 @@ struct m_sub_property {
     .type = {.type = CONF_TYPE_FLOAT}, .value = {.float_ = (f)}
 #define SUB_PROP_DOUBLE(f) \
     .type = {.type = CONF_TYPE_DOUBLE}, .value = {.double_ = (f)}
-#define SUB_PROP_FLAG(f) \
-    .type = {.type = CONF_TYPE_FLAG}, .value = {.flag = (f)}
+#define SUB_PROP_BOOL(f) \
+    .type = {.type = CONF_TYPE_BOOL}, .value = {.bool_ = (f)}
 #define SUB_PROP_PTS(f) \
     .type = {.type = &m_option_type_time}, .value = {.double_ = (f)}
 
+int m_property_read_sub_validate(void *ctx, struct m_property *prop,
+                                 int action, void *arg);
 int m_property_read_sub(const struct m_sub_property *props, int action, void *arg);
 
 

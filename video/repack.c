@@ -76,8 +76,8 @@ struct mp_repack {
     int f32_comp_size;
     float f32_m[4], f32_o[4];
     uint32_t f32_pmax[4];
-    enum mp_csp f32_csp_space;
-    enum mp_csp_levels f32_csp_levels;
+    enum pl_color_system f32_csp_space;
+    enum pl_color_levels f32_csp_levels;
 
     // REPACK_STEP_REPACK: if true, need to copy this plane
     bool copy_buf[4];
@@ -95,7 +95,7 @@ static int find_gbrp_format(int depth, int num_planes)
         return 0;
     struct mp_regular_imgfmt desc = {
         .component_type = MP_COMPONENT_TYPE_UINT,
-        .forced_csp = MP_CSP_RGB,
+        .forced_csp = PL_COLOR_SYSTEM_RGB,
         .component_size = depth > 8 ? 2 : 1,
         .component_pad = depth - (depth > 8 ? 16 : 8),
         .num_planes = num_planes,
@@ -169,7 +169,7 @@ static void swap_endian(struct mp_image *dst, int dst_x, int dst_y,
                     ((uint32_t *)d)[x] = av_bswap32(((uint32_t *)s)[x]);
                 break;
             default:
-                assert(0);
+                MP_ASSERT_UNREACHABLE();
             }
         }
     }
@@ -245,6 +245,8 @@ UN_WORD_3(un_x8ccc8,  uint32_t, uint8_t,  8, 16, 24, 0xFFu)
 PA_WORD_3(pa_z8ccc8,  uint32_t, uint8_t,  8, 16, 24, 0)
 UN_WORD_3(un_ccc10x2, uint32_t, uint16_t, 0, 10, 20, 0x3FFu)
 PA_WORD_3(pa_ccc10z2, uint32_t, uint16_t, 0, 10, 20, 0)
+UN_WORD_3(un_ccc16x16, uint64_t, uint16_t, 0, 16, 32, 0xFFFFu)
+PA_WORD_3(pa_ccc16z16, uint64_t, uint16_t, 0, 16, 32, 0)
 
 #define PA_WORD_2(name, packed_t, plane_t, sh_c0, sh_c1, pad)               \
     static void name(void *dst, void *src[], int w) {                       \
@@ -305,15 +307,16 @@ struct regular_repacker {
 };
 
 static const struct regular_repacker regular_repackers[] = {
-    {32, 8,  0, 3, pa_ccc8z8,  un_ccc8x8},
-    {32, 8,  8, 3, pa_z8ccc8,  un_x8ccc8},
-    {32, 8,  0, 4, pa_cccc8,   un_cccc8},
-    {64, 16, 0, 4, pa_cccc16,  un_cccc16},
-    {24, 8,  0, 3, pa_ccc8,    un_ccc8},
-    {48, 16, 0, 3, pa_ccc16,   un_ccc16},
-    {16, 8,  0, 2, pa_cc8,     un_cc8},
-    {32, 16, 0, 2, pa_cc16,    un_cc16},
-    {32, 10, 0, 3, pa_ccc10z2, un_ccc10x2},
+    {32, 8,  0, 3, pa_ccc8z8,   un_ccc8x8},
+    {32, 8,  8, 3, pa_z8ccc8,   un_x8ccc8},
+    {32, 8,  0, 4, pa_cccc8,    un_cccc8},
+    {64, 16, 0, 4, pa_cccc16,   un_cccc16},
+    {64, 16, 0, 3, pa_ccc16z16, un_ccc16x16},
+    {24, 8,  0, 3, pa_ccc8,     un_ccc8},
+    {48, 16, 0, 3, pa_ccc16,    un_ccc16},
+    {16, 8,  0, 2, pa_cc8,      un_cc8},
+    {32, 16, 0, 2, pa_cc16,     un_cc16},
+    {32, 10, 0, 3, pa_ccc10z2,  un_ccc10x2},
 };
 
 static void packed_repack(struct mp_repack *rp,
@@ -464,7 +467,7 @@ static void setup_fringe_rgb_packer(struct mp_repack *rp)
         return;
 
     if (desc.bpp[0] > 16 || (desc.bpp[0] % 8u) ||
-        mp_imgfmt_get_forced_csp(rp->imgfmt_a) != MP_CSP_RGB ||
+        mp_imgfmt_get_forced_csp(rp->imgfmt_a) != PL_COLOR_SYSTEM_RGB ||
         desc.num_planes != 1 || desc.comps[3].size)
         return;
 
@@ -842,8 +845,8 @@ static void update_repack_float(struct mp_repack *rp)
     // Image in input format.
     struct mp_image *ui =  rp->pack ? rp->steps[rp->num_steps - 1].buf[1]
                                     : rp->steps[0].buf[0];
-    enum mp_csp csp = ui->params.color.space;
-    enum mp_csp_levels levels = ui->params.color.levels;
+    enum pl_color_system csp = ui->params.repr.sys;
+    enum pl_color_levels levels = ui->params.repr.levels;
     if (rp->f32_csp_space == csp && rp->f32_csp_levels == levels)
         return;
 
@@ -986,8 +989,8 @@ static bool setup_format_ne(struct mp_repack *rp)
                 (desc.component_size != 1 && desc.component_size != 2))
                 return false;
             rp->f32_comp_size = desc.component_size;
-            rp->f32_csp_space = MP_CSP_COUNT;
-            rp->f32_csp_levels = MP_CSP_LEVELS_COUNT;
+            rp->f32_csp_space = PL_COLOR_SYSTEM_COUNT;
+            rp->f32_csp_levels = PL_COLOR_LEVELS_COUNT;
             rp->steps[rp->num_steps++] = (struct repack_step) {
                 .type = REPACK_STEP_FLOAT,
                 .fmt = {

@@ -29,6 +29,8 @@
 #include <fcntl.h>
 #include <locale.h>
 
+#include "compiler.h"
+
 #if HAVE_GLOB_POSIX
 #include <glob.h>
 #endif
@@ -78,9 +80,19 @@ int mp_make_wakeup_pipe(int pipes[2]);
 void mp_flush_wakeup_pipe(int pipe_end);
 
 #ifdef _WIN32
+
 #include <wchar.h>
 wchar_t *mp_from_utf8(void *talloc_ctx, const char *s);
 char *mp_to_utf8(void *talloc_ctx, const wchar_t *s);
+
+// Use this in win32-specific code rather than PATH_MAX or MAX_PATH.
+// This is necessary because we declare long-path aware support which raises
+// the effective limit without affecting any defines.
+// The actual limit is 32767 but there's a few edge cases that reduce
+// it. So pick this nice round number.
+// Note that this is wchars, not chars.
+#define MP_PATH_MAX (32000)
+
 #endif
 
 #ifdef __CYGWIN__
@@ -94,10 +106,11 @@ char *mp_to_utf8(void *talloc_ctx, const wchar_t *s);
 #include <sys/stat.h>
 #include <fcntl.h>
 
-int mp_printf(const char *format, ...);
-int mp_fprintf(FILE *stream, const char *format, ...);
+int mp_printf(const char *format, ...) PRINTF_ATTRIBUTE(1, 2);
+int mp_fprintf(FILE *stream, const char *format, ...) PRINTF_ATTRIBUTE(2, 3);
 int mp_open(const char *filename, int oflag, ...);
 int mp_creat(const char *filename, int mode);
+int mp_rename(const char *oldpath, const char *newpath);
 FILE *mp_fopen(const char *filename, const char *mode);
 DIR *mp_opendir(const char *path);
 struct dirent *mp_readdir(DIR *dir);
@@ -113,6 +126,9 @@ char *mp_getenv(const char *name);
 char ***mp_penviron(void);
 
 off_t mp_lseek(int fd, off_t offset, int whence);
+void *mp_dlopen(const char *filename, int flag);
+void *mp_dlsym(void *handle, const char *symbol);
+char *mp_dlerror(void);
 
 // mp_stat types. MSVCRT's dev_t and ino_t are way too short to be unique.
 typedef uint64_t mp_dev_t_;
@@ -161,6 +177,7 @@ void mp_globfree(mp_glob_t *pglob);
 #define fprintf(...) mp_fprintf(__VA_ARGS__)
 #define open(...) mp_open(__VA_ARGS__)
 #define creat(...) mp_creat(__VA_ARGS__)
+#define rename(...) mp_rename(__VA_ARGS__)
 #define fopen(...) mp_fopen(__VA_ARGS__)
 #define opendir(...) mp_opendir(__VA_ARGS__)
 #define readdir(...) mp_readdir(__VA_ARGS__)
@@ -171,6 +188,12 @@ void mp_globfree(mp_glob_t *pglob);
 
 #undef lseek
 #define lseek(...) mp_lseek(__VA_ARGS__)
+
+#define RTLD_NOW 0
+#define RTLD_LOCAL 0
+#define dlopen(fn,fg) mp_dlopen((fn), (fg))
+#define dlsym(h,s) mp_dlsym((h), (s))
+#define dlerror mp_dlerror
 
 // Affects both "stat()" and "struct stat".
 #undef stat

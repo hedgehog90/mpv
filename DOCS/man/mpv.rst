@@ -39,9 +39,12 @@ LIRC support - configure remotes as input devices instead).
 
 See the ``--input-`` options for ways to customize it.
 
-The following listings are not necessarily complete. See ``etc/input.conf`` for
-a list of default bindings. User ``input.conf`` files and Lua scripts can
-define additional key bindings.
+The following listings are not necessarily complete. See ``etc/input.conf``
+in the mpv source files for a list of default bindings. User ``input.conf``
+files and Lua scripts can define additional key bindings.
+
+See `COMMAND INTERFACE`_ and `Key names`_ sections for more details on
+configuring keybindings.
 
 See also ``--input-test`` for interactive binding details by key, and the
 `stats`_ built-in script for key bindings list (including print to terminal).
@@ -61,7 +64,7 @@ Ctrl+LEFT and Ctrl+RIGHT
     Seek to the previous/next subtitle. Subject to some restrictions and
     might not always work; see ``sub-seek`` command.
 
-Ctrl+Shift+Left and Ctrl+Shift+Right
+Ctrl+Shift+LEFT and Ctrl+Shift+RIGHT
     Adjust subtitle delay so that the next or previous subtitle is displayed
     now. This is especially useful to sync subtitles to audio.
 
@@ -91,7 +94,7 @@ Shift+Ctrl+BACKSPACE
 ENTER
     Go forward in the playlist.
 
-p / SPACE
+p and SPACE
     Pause (pressing again unpauses).
 
 \.
@@ -107,7 +110,8 @@ q
 
 Q
     Like ``q``, but store the current playback position. Playing the same file
-    later will resume at the old playback position if possible.
+    later will resume at the old playback position if possible. See
+    `RESUMING PLAYBACK`_.
 
 / and *
     Decrease/increase volume.
@@ -124,6 +128,9 @@ m
 \#
     Cycle through the available audio tracks.
 
+E
+    Cycle through the available Editions.
+
 f
     Toggle fullscreen (see also ``--fs``).
 
@@ -137,7 +144,7 @@ w and W
     Decrease/increase pan-and-scan range. The ``e`` key does the same as
     ``W`` currently, but use is discouraged.
 
-o (also P)
+o and P
     Show progression bar, elapsed time and total duration on the OSD.
 
 O
@@ -159,16 +166,16 @@ l
 L
     Toggle infinite looping.
 
-Ctrl + and Ctrl -
+Ctrl++ and Ctrl+-
     Adjust audio delay (A/V sync) by +/- 0.1 seconds.
 
 Shift+g and Shift+f
     Adjust subtitle font size by +/- 10%.
 
 u
-    Switch between applying no style overrides to SSA/ASS subtitles, and
-    overriding them almost completely with the normal subtitle style. See
-    ``--sub-ass-override`` for more info.
+    Switch between applying only ``--sub-ass-*`` overrides (default) to SSA/ASS
+    subtitles, and overriding them almost completely with the normal subtitle
+    style. See ``--sub-ass-override`` for more info.
 
 V
     Toggle subtitle VSFilter aspect compatibility mode. See
@@ -185,7 +192,7 @@ S
     Take a screenshot, without subtitles. (Whether this works depends on VO
     driver support.)
 
-Ctrl s
+Ctrl+s
     Take a screenshot, as the window shows it (with subtitles, OSD, and scaled
     video).
 
@@ -204,13 +211,13 @@ d
 A
     Cycle aspect ratio override.
 
-Ctrl h
+Ctrl+h
     Toggle hardware video decoding on/off.
 
 Alt+LEFT, Alt+RIGHT, Alt+UP, Alt+DOWN
     Move the video rectangle (panning).
 
-Alt + and Alt -
+Alt++ and Alt+-
     Combining ``Alt`` with the ``+`` or ``-`` keys changes video zoom.
 
 Alt+BACKSPACE
@@ -229,7 +236,7 @@ i and I
     file such as codec, framerate, number of dropped frames and so on. See
     `STATS`_ for more information.
 
-del
+DEL
     Cycle OSC visibility between never / auto (mouse-move) / always
 
 \`
@@ -250,16 +257,16 @@ corresponding adjustment.)
 7 and 8
     Adjust saturation.
 
-Alt+0 (and command+0 on macOS)
+Alt+0 (and Command+0 on macOS)
     Resize video window to half its original size.
 
-Alt+1 (and command+1 on macOS)
+Alt+1 (and Command+1 on macOS)
     Resize video window to its original size.
 
-Alt+2 (and command+2 on macOS)
+Alt+2 (and Command+2 on macOS)
     Resize video window to double its original size.
 
-command + f (macOS only)
+Command + f (macOS only)
     Toggle fullscreen (see also ``--fs``).
 
 (The following keys are valid if you have a keyboard with multimedia keys.)
@@ -273,6 +280,8 @@ STOP
 PREVIOUS and NEXT
     Seek backward/forward 1 minute.
 
+ZOOMIN and ZOOMOUT
+    Changes video zoom.
 
 If you miss some older key bindings, look at ``etc/restore-old-bindings.conf``
 in the mpv git repository.
@@ -290,10 +299,10 @@ Forward/Back button
     Skip to next/previous entry in playlist.
 
 Wheel up/down
-    Seek forward/backward 10 seconds.
+    Decrease/increase volume.
 
 Wheel left/right
-    Decrease/increase volume.
+    Seek forward/backward 10 seconds.
 
 
 USAGE
@@ -433,23 +442,32 @@ need to escape special characters. To work this around, the path can be
 additionally wrapped in the fixed-length syntax, e.g. ``%n%string_of_length_n``
 (see above).
 
-Some mpv options interpret paths starting with ``~``. Currently, the prefix
-``~~/`` expands to the mpv configuration directory (usually ``~/.config/mpv/``).
+Some mpv options interpret paths starting with ``~``.
+Currently, the prefix ``~~home/`` expands to the mpv configuration directory
+(usually ``~/.config/mpv/``).
 ``~/`` expands to the user's home directory. (The trailing ``/`` is always
 required.) The following paths are currently recognized:
 
 ================ ===============================================================
 Name             Meaning
 ================ ===============================================================
-``~~/``          mpv config dir (for example ``~/.config/mpv/``)
+``~~/``          If the subpath exists in any of the mpv's config directories
+                 the path of the existing file/dir is returned. Otherwise this
+                 is equivalent to ``~~home/``.
+                 Note that if --no-config is used ``~~/foobar`` will resolve to
+                 ``foobar`` which can be unexpected.
 ``~/``           user home directory root (similar to shell, ``$HOME``)
-``~~home/``      same as ``~~/``
+``~~home/``      mpv config dir (for example ``~/.config/mpv/``)
 ``~~global/``    the global config path, if available (not on win32)
 ``~~osxbundle/`` the macOS bundle resource path (macOS only)
 ``~~desktop/``   the path to the desktop (win32, macOS)
-``~~exe_dir``    win32 only: the path to the directory containing the exe (for
+``~~exe_dir/``   win32 only: the path to the directory containing the exe (for
                  config file purposes; ``$MPV_HOME`` overrides it)
-``~~old_home``   do not use
+``~~cache/``     the path to application cache data (``~/.cache/mpv/``)
+                 On some platforms, this will be the same as ``~~home/``.
+``~~state/``     the path to application state data (``~/.local/state/mpv/``)
+                 On some platforms, this will be the same as ``~~home/``.
+``~~old_home/``  do not use
 ================ ===============================================================
 
 
@@ -507,10 +525,8 @@ String list and path list options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 String lists are separated by ``,``. The strings are not parsed or interpreted
-by the option system itself. However, most
-
-Path or file list options use ``:`` (Unix) or ``;`` (Windows) as separator,
-instead of ``,``.
+by the option system itself. However, most path or file list options use ``:``
+(Unix) or ``;`` (Windows) as separator, instead of ``,``.
 
 They support the following operations:
 
@@ -523,7 +539,6 @@ Suffix        Meaning
 -pre          Prepend 1 or more items (same syntax as -set)
 -clr          Clear the option (remove all items)
 -remove       Delete item if present (does not interpret escapes)
--del          Delete 1 or more items by integer index (deprecated)
 -toggle       Append an item, or remove if if it already exists (no escapes)
 ============= ===============================================
 
@@ -552,7 +567,7 @@ Keys are unique within the list. If an already present key is set, the existing
 key is removed before the new value is appended.
 
 If you want to pass a value without interpreting it for escapes or ``,``, it is
-recommended to use the ``-add`` variant. When using libmpv, prefer using
+recommended to use the ``-append`` variant. When using libmpv, prefer using
 ``MPV_FORMAT_NODE_MAP``; when using a scripting backend or the JSON IPC, use an
 appropriate structured data type.
 
@@ -574,7 +589,6 @@ Suffix        Meaning
 -pre          Prepend 1 or more filters (same syntax as -set)
 -clr          Clear the option (remove all filters)
 -remove       Delete filter if present
--del          Delete 1 or more filters by integer index or filter label (deprecated)
 -toggle       Append a filter, or remove if if it already exists
 -help         Pseudo operation that prints a help text to the terminal
 ============= ===============================================
@@ -611,30 +625,35 @@ user-specific one is ``~/.config/mpv/mpv.conf``. For details and platform
 specifics (in particular Windows paths) see the `FILES`_ section.
 
 User-specific options override system-wide options and options given on the
-command line override either. The syntax of the configuration files is
-``option=value``. Everything after a *#* is considered a comment. Options
-that work without values can be enabled by setting them to *yes* and disabled by
-setting them to *no*. Even suboptions can be specified in this way.
+command line override both. The syntax of the configuration files is
+``option=value``. Everything after a *#* is considered a comment. Options that
+work without values can be enabled by setting them to *yes* and disabled by
+setting them to *no*, and if the value is omitted, *yes* is implied. Even
+suboptions can be specified in this way.
 
 .. admonition:: Example configuration file
 
     ::
 
-        # Use GPU-accelerated video output by default.
-        vo=gpu
-        # Use quotes for text that can contain spaces:
-        term-status-msg="Time: ${time-pos}"
+        # Don't allow new windows to be larger than the screen.
+        autofit-larger=100%x100%
+        # Enable hardware decoding if available, =yes is implied.
+        hwdec
+        # Spaces don't have to be escaped.
+        osd-playing-msg=File: ${filename}
 
-Escaping spaces and special characters
+Escaping special characters
 --------------------------------------
 
-This is done like with command line options. The shell is not involved here,
-but option values still need to be quoted as a whole if it contains certain
-characters like spaces. A config entry can be quoted with ``"``,
-as well as with the fixed-length syntax (``%n%``) mentioned before. This is like
-passing the exact contents of the quoted string as command line option. C-style
-escapes are currently _not_ interpreted on this level, although some options do
-this manually. (This is a mess and should probably be changed at some point.)
+This is done like with command line options. A config entry can be quoted with
+``"``, ``'``, as well as with the fixed-length syntax (``%n%``) mentioned
+before. This is like passing the exact contents of the quoted string as a
+command line option. C-style escapes are currently _not_ interpreted on this
+level, although some options do this manually (this is a mess and should
+probably be changed at some point). The shell is not involved here, so option
+values only need to be quoted to escape ``#`` anywhere in the value, ``"``,
+``'`` or ``%`` at the beginning of the value, and leading and trailing
+whitespace.
 
 Putting Command Line Options into the Configuration File
 --------------------------------------------------------
@@ -648,7 +667,7 @@ Option                  Configuration file entry
 ``--flag``              ``flag``
 ``-opt val``            ``opt=val``
 ``--opt=val``           ``opt=val``
-``-opt "has spaces"``   ``opt="has spaces"``
+``-opt "has spaces"``   ``opt=has spaces``
 ======================= ========================
 
 File-specific Configuration Files
@@ -698,7 +717,7 @@ or at runtime with the ``apply-profile <name>`` command.
         [slow]
         profile-desc="some profile name"
         # reference a builtin profile
-        profile=gpu-hq
+        profile=high-quality
 
         [fast]
         vo=vdpau
@@ -762,7 +781,7 @@ the following options:
 
         [something]
         profile-restore=copy-equal
-        vf-add=rotate=90
+        vf-add=rotate=PI/2  # rotate by 90 degrees
 
     Then running these commands will result in behavior as commented:
 
@@ -770,9 +789,9 @@ the following options:
 
         set vf vflip
         apply-profile something
-        vf-add=hflip
+        vf add hflip
         apply-profile something
-        # vf == vflip,rotate=90,hflip,rotate=90
+        # vf == vflip,rotate=PI/2,hflip,rotate=PI/2
         apply-profile something restore
         # vf == vflip
 
@@ -781,9 +800,10 @@ Conditional auto profiles
 
 Profiles which have the ``profile-cond`` option set are applied automatically
 if the associated condition matches (unless auto profiles are disabled). The
-option takes a string, which is interpreted as Lua condition. If evaluating the
-expression returns true, the profile is applied, if it returns false, it is
-ignored. This Lua code execution is not sandboxed.
+option takes a string, which is interpreted as Lua expression. If the
+expression evaluates as truthy, the profile is applied. If the expression
+errors or evaluates as falsy, the profile is not applied. This Lua code
+execution is not sandboxed.
 
 Any variables in condition expressions can reference properties. If an
 identifier is not already defined by Lua or mpv, it is interpreted as property.
@@ -804,13 +824,13 @@ cause errors if used in expressions. These are logged in verbose mode, and the
 expression is considered to be false.
 
 Whenever a property referenced by a profile condition changes, the condition
-is re-evaluated. If the return value of the condition changes from false or
-error to true, the profile is applied.
+is re-evaluated. If the return value of the condition changes from falsy or
+error to truthy, the profile is applied.
 
-This mechanism tries to "unapply" profiles once the condition changes from true
-to false. If you want to use this, you need to set ``profile-restore`` for the
-profile. Another possibility it to create another profile with an inverse
-condition to undo the other profile.
+This mechanism tries to "unapply" profiles once the condition changes from
+truthy to falsy or error. If you want to use this, you need to set
+``profile-restore`` for the profile. Another possibility it to create another
+profile with an inverse condition to undo the other profile.
 
 Recursive profiles can be used. But it is discouraged to reference other
 conditional profiles in a conditional profile, since this can lead to tricky
@@ -827,6 +847,14 @@ and unintuitive behavior.
         profile-cond=width >= 1280
         hue=-50
 
+    Make only videos containing "youtube" or "youtu.be" in their path brighter:
+
+    ::
+
+        [youtube]
+        profile-cond=path:find('youtu%.?be')
+        gamma=20
+
     If you want the profile to be reverted if the condition goes to false again,
     you can set ``profile-restore``:
 
@@ -836,7 +864,7 @@ and unintuitive behavior.
         profile-desc=Mess up video when entering fullscreen
         profile-cond=fullscreen
         profile-restore=copy
-        vf-add=rotate=90
+        vf-add=rotate=PI/2  # rotate by 90 degrees
 
     This appends the ``rotate`` filter to the video filter chain when entering
     fullscreen. When leaving fullscreen, the ``vf`` option is set to the value
@@ -849,7 +877,7 @@ and unintuitive behavior.
 
         [something]
         profile-cond=fullscreen
-        vf-add=@rot:rotate=90
+        vf-add=@rot:rotate=PI/2
 
         [something-inv]
         profile-cond=not fullscreen
@@ -1065,7 +1093,8 @@ this with ``--untimed``, but it will likely break, unless the stream has no
 audio, and the input feeds data to the player at a constant rate.
 
 Another common problem is with MJPEG streams. These do not signal the correct
-framerate. Using ``--untimed`` or ``--no-correct-pts --fps=60`` might help.
+framerate. Using ``--untimed`` or ``--no-correct-pts --container-fps-override=60``
+might help.
 
 For livestreams, data can build up due to pausing the stream, due to slightly
 lower playback rate, or "buffering" pauses. If the demuxer cache is enabled,
@@ -1083,6 +1112,33 @@ Additional options that can be tried:
 - without audio ``--framedrop=no --speed=1.01`` may help for live sources
   (results can be mixed)
 
+RESUMING PLAYBACK
+=================
+
+mpv is capable of storing the playback position of the currently playing file
+and resume from there the next time that file is played. This is done with the
+commands ``quit-watch-later`` (bound to Shift+Q by default) and
+``write-watch-later-config``, and with the ``--save-position-on-quit`` option.
+
+The difference between always quitting with a key bound to ``quit-watch-later``
+and using ``--save-position-on-quit`` is that the latter will save the playback
+position even when mpv is closed with a method other than a keybinding, such as
+clicking the close button in the window title bar. However if mpv is terminated
+abruptly and doesn't have the time to save, then the position will not be saved.
+For example, if you shutdown your system without closing mpv beforehand.
+
+mpv also stores options other than the playback position when they have been
+modified after playback began, for example the volume and selected audio/subtitles,
+and restores their values the next time the file is played. Which options are
+saved can be configured with the ``--watch-later-options`` option.
+
+When playing multiple playlist entries, mpv checks if one them has a resume
+config file associated, and if it finds one it restarts playback from it. For
+example, if you use ``quit-watch-later`` on the 5th episode of a show, and
+later play all the episodes, mpv will automatically resume playback from
+episode 5.
+
+More options to configure this functionality are listed in `Watch Later`_.
 
 PROTOCOLS
 =========
@@ -1097,8 +1153,8 @@ PROTOCOLS
     either aliases to documented protocols, or are just redirections to
     protocols implemented and documented in FFmpeg.
 
-    ``data:`` is supported in FFmpeg (not in Libav), but needs to be in the
-    format ``data://``. This is done to avoid ambiguity with filenames. You
+    ``data:`` is supported, but needs to be in the format ``data://``.
+    This is done to avoid ambiguity with filenames. You
     can also prefix it with ``lavf://`` or ``ffmpeg://``.
 
 ``ytdl://...``
@@ -1154,7 +1210,7 @@ PROTOCOLS
 
 ``lavf://...``
 
-    Access any FFmpeg/Libav libavformat protocol. Basically, this passed the
+    Access any FFmpeg libavformat protocol. Basically, this passed the
     string after the ``//`` directly to libavformat.
 
 ``av://type:options``
@@ -1302,50 +1358,6 @@ works like in older mpv releases:
     change, and not apply your additional settings, and/or use a different
     profile name.
 
-Linux desktop issues
-====================
-
-This subsection describes common problems on the Linux desktop. None of these
-problems exist on systems like Windows or macOS.
-
-Disabling Screensaver
----------------------
-
-By default, mpv tries to disable the OS screensaver during playback (only if
-a VO using the OS GUI API is active). ``--stop-screensaver=no`` disables this.
-
-A common problem is that Linux desktop environments ignore the standard
-screensaver APIs on which mpv relies. In particular, mpv uses the Screen Saver
-extension (XSS) on X11, and the idle-inhibit on Wayland.
-
-GNOME is one of the worst offenders, and ignores even the now widely supported
-idle-inhibit protocol. (This is either due to a combination of malice and
-incompetence, but since implementing this protocol would only take a few lines
-of code, it is most likely the former. You will also notice how GNOME advocates
-react offended whenever their sabotage is pointed out, which indicates either
-hypocrisy, or even worse ignorance.)
-
-Such incompatible desktop environments (i.e. which ignore standards) typically
-require using a DBus API. This is ridiculous in several ways. The immediate
-practical problem is that it would require adding a quite unwieldy dependency
-for a DBus library, somehow integrating its mainloop into mpv, and other
-generally unacceptable things.
-
-However, since mpv does not officially support GNOME, this is not much of a
-problem. If you are one of those miserable users who want to use mpv on GNOME,
-report a bug on the GNOME issue tracker:
-https://gitlab.gnome.org/groups/GNOME/-/issues
-
-Alternatively, you may be able to write a Lua script that calls the
-``xdg-screensaver`` command line program. (By the way, this a command line
-program is an utterly horrible kludge that tries to identify your DE, and then
-tries to send the correct DBus command via a DBus CLI tool.) If you find the
-idea of having to write a script just so your screensaver doesn't kick in
-ridiculous, do not use GNOME, or use GNOME video software instead of mpv (good
-luck).
-
-Before mpv 0.33.0, the X11 backend ran ``xdg-screensaver reset`` in 10 second
-intervals when not paused. This hack was removed in 0.33.0.
 
 .. include:: options.rst
 
@@ -1413,7 +1425,7 @@ behavior of mpv.
 ``DISPLAY``
     Standard X11 display name to use.
 
-FFmpeg/Libav:
+FFmpeg:
     This library accesses various environment variables. However, they are not
     centrally documented, and documenting them is not our job. Therefore, this
     list is incomplete.
@@ -1507,12 +1519,25 @@ input command can take an exit code: in this case, that exit code is returned.
 FILES
 =====
 
+Note that this section assumes Linux/BSD. On other platforms the paths may be different.
 For Windows-specifics, see `FILES ON WINDOWS`_ section.
 
 ``/usr/local/etc/mpv/mpv.conf``
     mpv system-wide settings (depends on ``--prefix`` passed to configure - mpv
     in default configuration will use ``/usr/local/etc/mpv/`` as config
     directory, while most Linux distributions will set it to ``/etc/mpv/``).
+
+``~/.cache/mpv``
+    The standard cache directory. Certain options within mpv may cause it to write
+    cache files to disk. This can be overridden by environment variables, in
+    ascending order:
+
+    :1: If ``$XDG_CACHE_HOME`` is set, then the derived cache directory
+        will be ``$XDG_CACHE_HOME/mpv``.
+    :2: If ``$MPV_HOME`` is set, then the derived cache directory will be
+       ``$MPV_HOME``.
+
+    If the directory does not exist, mpv will try to create it automatically.
 
 ``~/.config/mpv``
     The standard configuration directory. This can be overridden by environment
@@ -1528,7 +1553,9 @@ For Windows-specifics, see `FILES ON WINDOWS`_ section.
 
 ``~/.mpv/``
     The original (pre 0.5.0) configuration directory. It will continue to be
-    read if present.
+    read if present. If this directory is present and the standard configuration
+    directory is not present, then cache files and watch later config files will
+    also be written to this directory.
 
     If both this directory and the standard configuration directory are
     present, configuration will be read from both with the standard
@@ -1553,11 +1580,8 @@ For Windows-specifics, see `FILES ON WINDOWS`_ section.
     fallback subtitle font
 
 ``~/.config/mpv/fonts/``
-    Font files in this directory are used by mpv/libass for subtitles. Useful
-    if you do not want to install fonts to your system. Note that files in this
-    directory are loaded into memory before being used by mpv. If you have a
-    lot of fonts, consider using fonts.conf (see above) to include additional
-    fonts, which is more memory-efficient.
+    Default location for ``--sub-fonts-dir`` (see `Subtitles`_) and
+    ``--osd-fonts-dir`` (see `OSD`_).
 
 ``~/.config/mpv/scripts/``
     All files in this directory are loaded as if they were passed to the
@@ -1567,10 +1591,17 @@ For Windows-specifics, see `FILES ON WINDOWS`_ section.
 
     See `Script location`_ for details.
 
-``~/.config/mpv/watch_later/``
+``~/.local/state/mpv/watch_later/``
     Contains temporary config files needed for resuming playback of files with
     the watch later feature. See for example the ``Q`` key binding, or the
     ``quit-watch-later`` input command.
+
+    This can be overridden by environment variables, in ascending order:
+
+    :1: If ``$XDG_STATE_HOME`` is set, then the derived watch later directory
+        will be ``$XDG_STATE_HOME/mpv/watch_later``.
+    :2: If ``$MPV_HOME`` is set, then the derived watch later directory will be
+       ``$MPV_HOME/watch_later``.
 
     Each file is a small config file which is loaded if the corresponding media
     file is loaded. It contains the playback position and some (not necessarily
@@ -1602,16 +1633,20 @@ You can find the exact path by running ``echo %APPDATA%\mpv\mpv.conf`` in cmd.ex
 Other config files (such as ``input.conf``) are in the same directory. See the
 `FILES`_ section above.
 
+The cache directory is located at ``%LOCALAPPDATA%/mpv/cache``.
+
+The watch_later directory is located at ``%LOCALAPPDATA%/mpv/watch_later``.
+
 The environment variable ``$MPV_HOME`` completely overrides these, like on
 UNIX.
 
 If a directory named ``portable_config`` next to the mpv.exe exists, all
-config will be loaded from this directory only. Watch later config files are
-written to this directory as well. (This exists on Windows only and is redundant
-with ``$MPV_HOME``. However, since Windows is very scripting unfriendly, a
-wrapper script just setting ``$MPV_HOME``, like you could do it on other
-systems, won't work. ``portable_config`` is provided for convenience to get
-around this restriction.)
+config will be loaded from this directory only. Watch later config files and
+cache files are written to this directory as well. (This exists on Windows
+only and is redundant with ``$MPV_HOME``. However, since Windows is very
+scripting unfriendly, a wrapper script just setting ``$MPV_HOME``, like you
+could do it on other systems, won't work. ``portable_config`` is provided for
+convenience to get around this restriction.)
 
 Config files located in the same directory as ``mpv.exe`` are loaded with
 lower priority. Some config files are loaded only once, which means that
@@ -1625,3 +1660,11 @@ future.
 
 Note that mpv likes to mix ``/`` and ``\`` path separators for simplicity.
 kernel32.dll accepts this, but cmd.exe does not.
+
+FILES ON MACOS
+==============
+
+On macOS the watch later directory is located at ``~/.config/mpv/watch_later/``
+and the cache directory is set to ``~/Library/Caches/io.mpv/``. These directories
+can't be overwritten by enviroment variables.
+Everything else is the same as `FILES`_.

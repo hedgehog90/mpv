@@ -25,6 +25,7 @@
 
 #include "misc/bstr.h"
 #include "audio/chmap.h"
+#include "common/common.h"
 
 // m_option allows to parse, print and copy data of various types.
 
@@ -66,6 +67,7 @@ extern const m_option_type_t m_option_type_channels;
 extern const m_option_type_t m_option_type_aspect;
 extern const m_option_type_t m_option_type_obj_settings_list;
 extern const m_option_type_t m_option_type_node;
+extern const m_option_type_t m_option_type_rect;
 
 // Used internally by m_config.c
 extern const m_option_type_t m_option_type_alias;
@@ -103,6 +105,7 @@ struct m_geometry {
 
 void m_geometry_apply(int *xpos, int *ypos, int *widw, int *widh,
                       int scrw, int scrh, struct m_geometry *gm);
+void m_rect_apply(struct mp_rect *rc, int w, int h, struct m_geometry *gm);
 
 struct m_channels {
     bool set : 1;
@@ -145,9 +148,6 @@ struct m_obj_list {
     const char *aliases[5][2];
     // Allow a trailing ",", which adds an entry with name=""
     bool allow_trailer;
-    // Allow unknown entries, for which a dummy entry is inserted, and whose
-    // options are skipped and ignored.
-    bool allow_unknown_entries;
     // Callback to test whether an unknown entry should be allowed. (This can
     // be useful if adding them as explicit entries is too much work.)
     bool (*check_unknown_entry)(const char *name);
@@ -215,6 +215,7 @@ struct m_sub_options {
     bool (*get_sub_options)(int index, const struct m_sub_options **sub);
 };
 
+#define CONF_TYPE_BOOL          (&m_option_type_bool)
 #define CONF_TYPE_FLAG          (&m_option_type_flag)
 #define CONF_TYPE_INT           (&m_option_type_int)
 #define CONF_TYPE_INT64         (&m_option_type_int64)
@@ -254,6 +255,11 @@ union m_option_value {
     struct m_geometry size_box;
     struct m_channels channels;
 };
+
+// Keep fully zeroed instance of m_option_value to use as a default value, before
+// any specific union member is used. C standard says that `= {0}` activates and
+// initializes only the first member of the union, leaving padding bits undefined.
+static const union m_option_value m_option_value_default;
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -435,7 +441,8 @@ char *format_file_size(int64_t size);
 #define UPDATE_HWDEC            (1 << 20) // --hwdec
 #define UPDATE_DVB_PROG         (1 << 21) // some --dvbin-...
 #define UPDATE_SUB_HARD         (1 << 22) // subtitle opts. that need full reinit
-#define UPDATE_OPT_LAST         (1 << 22)
+#define UPDATE_SUB_EXTS         (1 << 23) // update internal list of sub exts
+#define UPDATE_OPT_LAST         (1 << 23)
 
 // All bits between _FIRST and _LAST (inclusive)
 #define UPDATE_OPTS_MASK \
@@ -604,13 +611,10 @@ extern const char m_option_path_separator;
 #define OPTDEF_FLOAT(f)   .defval = (void *)&(const float){f}
 #define OPTDEF_DOUBLE(d)  .defval = (void *)&(const double){d}
 
-#define M_RANGE(a, b) .min = (a), .max = (b)
+#define M_RANGE(a, b) .min = (double) (a), .max = (double) (b)
 
 #define OPT_BOOL(field) \
     OPT_TYPED_FIELD(m_option_type_bool, bool, field)
-
-#define OPT_FLAG(field) \
-    OPT_TYPED_FIELD(m_option_type_flag, int, field)
 
 #define OPT_INT(field) \
     OPT_TYPED_FIELD(m_option_type_int, int, field)
@@ -658,6 +662,9 @@ extern const char m_option_path_separator;
 #define OPT_SIZE_BOX(field) \
     OPT_TYPED_FIELD(m_option_type_size_box, struct m_geometry, field)
 
+#define OPT_RECT(field) \
+    OPT_TYPED_FIELD(m_option_type_rect, struct m_geometry, field)
+
 #define OPT_TRACKCHOICE(field) \
     OPT_CHOICE(field, {"no", -2}, {"auto", -1}), \
     M_RANGE(0, 8190)
@@ -666,7 +673,7 @@ extern const char m_option_path_separator;
     OPT_TYPED_FIELD(m_option_type_msglevels, char **, field)
 
 #define OPT_ASPECT(field) \
-    OPT_TYPED_FIELD(m_option_type_aspect, float, field)
+    OPT_TYPED_FIELD(m_option_type_aspect, double, field)
 
 #define OPT_IMAGEFORMAT(field) \
     OPT_TYPED_FIELD(m_option_type_imgfmt, int, field)

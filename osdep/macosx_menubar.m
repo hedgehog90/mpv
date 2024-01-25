@@ -20,7 +20,6 @@
 
 #import "macosx_menubar_objc.h"
 #import "osdep/macosx_application_objc.h"
-#include "osdep/macosx_compat.h"
 
 @implementation MenuBar
 {
@@ -34,9 +33,7 @@
         [userDefaults setBool:NO forKey:@"NSFullScreenMenuItemEverywhere"];
         [userDefaults setBool:YES forKey:@"NSDisabledDictationMenuItem"];
         [userDefaults setBool:YES forKey:@"NSDisabledCharacterPaletteMenuItem"];
-
-        if ([NSWindow respondsToSelector:@selector(setAllowsAutomaticWindowTabbing:)])
-            [NSWindow setAllowsAutomaticWindowTabbing: NO];
+        [NSWindow setAllowsAutomaticWindowTabbing: NO];
 
         menuTree = @[
             @{
@@ -266,35 +263,57 @@
                         @"action"     : @"cmd:",
                         @"key"        : @"",
                         @"target"     : self,
-                        @"cmd"        : @"set video-aspect \"4:3\""
+                        @"cmd"        : @"set video-aspect-override \"4:3\""
                     }],
                     [NSMutableDictionary dictionaryWithDictionary:@{
                         @"name"       : @"Aspect Ratio 16:9",
                         @"action"     : @"cmd:",
                         @"key"        : @"",
                         @"target"     : self,
-                        @"cmd"        : @"set video-aspect \"16:9\""
+                        @"cmd"        : @"set video-aspect-override \"16:9\""
                     }],
                     [NSMutableDictionary dictionaryWithDictionary:@{
                         @"name"       : @"Aspect Ratio 1.85:1",
                         @"action"     : @"cmd:",
                         @"key"        : @"",
                         @"target"     : self,
-                        @"cmd"        : @"set video-aspect \"1.85:1\""
+                        @"cmd"        : @"set video-aspect-override \"1.85:1\""
                     }],
                     [NSMutableDictionary dictionaryWithDictionary:@{
                         @"name"       : @"Aspect Ratio 2.35:1",
                         @"action"     : @"cmd:",
                         @"key"        : @"",
                         @"target"     : self,
-                        @"cmd"        : @"set video-aspect \"2.35:1\""
+                        @"cmd"        : @"set video-aspect-override \"2.35:1\""
                     }],
                     [NSMutableDictionary dictionaryWithDictionary:@{
                         @"name"       : @"Reset Aspect Ratio",
                         @"action"     : @"cmd:",
                         @"key"        : @"",
                         @"target"     : self,
-                        @"cmd"        : @"set video-aspect \"-1\""
+                        @"cmd"        : @"set video-aspect-override \"-1\""
+                    }],
+                    @{ @"name": @"separator" },
+                    [NSMutableDictionary dictionaryWithDictionary:@{
+                        @"name"       : @"Rotate Left",
+                        @"action"     : @"cmd:",
+                        @"key"        : @"",
+                        @"target"     : self,
+                        @"cmd"        : @"cycle-values video-rotate 0 270 180 90"
+                    }],
+                    [NSMutableDictionary dictionaryWithDictionary:@{
+                        @"name"       : @"Rotate Right",
+                        @"action"     : @"cmd:",
+                        @"key"        : @"",
+                        @"target"     : self,
+                        @"cmd"        : @"cycle-values video-rotate 90 180 270 0"
+                    }],
+                    [NSMutableDictionary dictionaryWithDictionary:@{
+                        @"name"       : @"Reset Rotation",
+                        @"action"     : @"cmd:",
+                        @"key"        : @"",
+                        @"target"     : self,
+                        @"cmd"        : @"set video-rotate 0"
                     }],
                     @{ @"name": @"separator" },
                     [NSMutableDictionary dictionaryWithDictionary:@{
@@ -559,7 +578,7 @@
                         @"url"        : @"https://mpv.io"
                     }],
                     [NSMutableDictionary dictionaryWithDictionary:@{
-                        @"name"       : @"mpv on github…",
+                        @"name"       : @"mpv on GitHub…",
                         @"action"     : @"url:",
                         @"key"        : @"",
                         @"target"     : self,
@@ -640,8 +659,7 @@
 
 #if HAVE_MACOS_TOUCHBAR
             if ([action isEqual:@"toggleTouchBarCustomizationPalette:"]) {
-                if (![NSApp respondsToSelector:@selector(touchBar)])
-                    continue;
+                continue;
             }
 #endif
 

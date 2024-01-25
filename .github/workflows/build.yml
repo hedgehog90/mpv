@@ -6,40 +6,75 @@ on:
       - master
       - ci
       - 'release/**'
+    paths-ignore:
+      - 'DOCS/**'
+      - 'TOOLS/lua/**'
   pull_request:
     branches: [master]
+    paths-ignore:
+      - 'DOCS/**'
+      - 'TOOLS/lua/**'
 
 jobs:
   mingw:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
+    env:
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
     strategy:
+      fail-fast: false
       matrix:
         target: [i686-w64-mingw32, x86_64-w64-mingw32]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      # Increase -N suffix here to force full rebuild after changes
-      - uses: actions/cache@v2
+      - name: Get time
+        id: get_time
+        run: echo "timestamp=`date +%s%N`" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v3
         with:
-          path: mingw_prefix/
-          key: "${{ matrix.target }}-1"
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ matrix.target }}-${{ steps.get_time.outputs.timestamp }}
+          restore-keys: ${{ matrix.target }}-
 
       - name: Install dependencies
         run: |
+          sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y autoconf automake pkg-config g++-mingw-w64 gcc-multilib nasm yasm
-          ./bootstrap.py
+          sudo apt-get install -y autoconf automake pkg-config g++-mingw-w64 gcc-multilib python3-pip ninja-build nasm wine wine32 wine64 ccache
+          sudo python3 -m pip install meson
 
-      - name: Build
+      - name: Build libraries
         run: |
           ./ci/build-mingw64.sh
         env:
           TARGET: ${{ matrix.target }}
 
-      - name: Print configure log
-        if: ${{ failure() }}
+      - name: Build with meson
+        id: build
         run: |
-          cat ./build/config.log
+          ./ci/build-mingw64.sh meson pack
+        env:
+          TARGET: ${{ matrix.target }}
+
+      - name: Print meson log
+        if: ${{ failure() && steps.build.outcome == 'failure' }}
+        run: |
+          cat ./build/meson-logs/meson-log.txt
+
+      - name: Functional test
+        id: tests
+        run: |
+          cd artifact && wine64 ./mpv.com -v --no-config
+        env:
+          WINEDEBUG: '+loaddll'
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: mpv-${{ matrix.target }}
+          path: mpv-git-*.zip
 
   macos:
     runs-on: ${{ matrix.os }}
@@ -47,99 +82,209 @@ jobs:
       matrix:
         cc:
           - "clang"
+        cxx:
+          - "clang++"
         os:
-          - "macos-10.15"
-          - "macos-11"
+          - "macos-12"
+          - "macos-13"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
+      - name: Remove stray upstream python binary symlinks under /usr/local
+        run: |
+          find /usr/local/bin -lname '*/Library/Frameworks/Python.framework/*' -delete -print
+          brew unlink python && brew link --overwrite python
 
       - name: Install dependencies
         run: |
           brew update
-          brew install autoconf automake pkg-config libtool python freetype fribidi little-cms2 luajit libass ffmpeg
+          brew install autoconf automake pkg-config libtool python freetype fribidi little-cms2 lua@5.1 libass ffmpeg meson libplacebo
 
-      - name: Build
+      - name: Build with meson
+        id: build
         run: |
           ./ci/build-macos.sh
         env:
           CC: "${{ matrix.cc }}"
+          CXX: "${{ matrix.cxx }}"
           TRAVIS_OS_NAME: "${{ matrix.os }}"
 
-      - name: Print configure log
-        if: ${{ failure() }}
+      - name: Print meson log
+        if: ${{ failure() && steps.build.outcome == 'failure' }}
         run: |
-          cat ./build/config.log
+          cat ./build/meson-logs/meson-log.txt
+
+      - name: Run meson tests
+        id: tests
+        run: |
+          meson test -C build
+
+      - name: Print meson test log
+        if: ${{ failure() && steps.tests.outcome == 'failure' }}
+        run: |
+          cat ./build/meson-logs/testlog.txt
 
   linux:
-    runs-on: "ubuntu-20.04"
+    runs-on: "ubuntu-22.04"
     container:
-      image: "registry.cirno.systems/kiwi/containers/mpv-ci:stable-deps"
-      # Disable seccomp until a container manager in GitHub recognizes
-      # clone3() syscall,
-      # <https://github.com/actions/virtual-environments/issues/3812>.
-      options: --security-opt seccomp=unconfined
+      image: "registry.opensuse.org/home/mia/images/images/mpv-ci:stable-deps"
       env:
-        CC: "${{ matrix.cc }}"
+        CC: "${{ matrix.config.cc }}"
+        CXX: "${{ matrix.config.cxx }}"
     strategy:
       matrix:
-        cc:
-          - "gcc"
-          - "clang"
+        config:
+        - {
+            cc: "gcc",
+            cxx: "g++",
+          }
+        - {
+            cc: "clang",
+            cxx: "clang++",
+          }
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
-          ./bootstrap.py
+          # workaround to avoid "fatal: unsafe repository" error
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Build
+      - name: Build with meson
+        id: build
         run: |
           ./ci/build-tumbleweed.sh
 
-      - name: Print configure log
-        if: ${{ failure() }}
+      - name: Print meson log
+        if: ${{ failure() && steps.build.outcome == 'failure' }}
         run: |
-          cat ./build/config.log
+          cat ./build/meson-logs/meson-log.txt
+
+      - name: Run meson tests
+        id: tests
+        run: |
+          meson test -C build
+
+      - name: Print meson test log
+        if: ${{ failure() && steps.tests.outcome == 'failure' }}
+        run: |
+          cat ./build/meson-logs/testlog.txt
 
   freebsd:
-    runs-on: macos-10.15 # until https://github.com/actions/runner/issues/385
+    runs-on: ubuntu-latest # until https://github.com/actions/runner/issues/385
+    timeout-minutes: 30 # avoid any weirdness with the VM
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Test in FreeBSD VM
-      uses: vmactions/freebsd-vm@v0.1.5 # aka FreeBSD 13.0
+      uses: cross-platform-actions/action@v0.19.1
       with:
-        usesh: true
-        prepare: |
-            # Requested in ci/build-freebsd.sh
-            pkg install -y \
+        operating_system: freebsd
+        version: '13.2'
+        run: |
+            sudo pkg update
+            sudo pkg install -y \
+                alsa-lib \
+                cmake \
                 evdev-proto \
                 ffmpeg \
-                libplacebo \
-                libxkbcommon \
-                luajit \
-                openal-soft \
-                pkgconf \
-                python3 \
-                sdl2 \
-                vulkan-headers \
-                wayland-protocols \
-                #
-            # Optionally auto-enabled
-            pkg install -y \
-                alsa-lib \
+                git \
+                iconv \
                 jackit \
-                libXv \
                 libarchive \
                 libbluray \
                 libcaca \
                 libcdio-paranoia \
                 libdvdnav \
+                libplacebo \
+                libXinerama \
+                libxkbcommon \
+                libxpresent \
+                libXv \
+                luajit \
+                meson \
                 mujs \
+                openal-soft \
+                pipewire \
+                pkgconf \
                 pulseaudio \
+                python3 \
                 rubberband \
                 sekrit-twc-zimg \
+                sdl2 \
+                sndio \
                 uchardet \
                 v4l_compat \
-                #
+                vulkan-headers \
+                wayland-protocols
+            ./ci/build-freebsd.sh
+            meson test -C build
+
+  msys2:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sys:
+          - clang64
+          - mingw64
+          - ucrt64
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Disable autocrlf
+        shell: pwsh
         run: |
-          ./ci/build-freebsd.sh
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - uses: actions/checkout@v3
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.sys }}
+          update: true
+          install: git
+          pacboy: >-
+            angleproject:p
+            ca-certificates:p
+            cc:p
+            diffutils:p
+            ffmpeg:p
+            lcms2:p
+            libarchive:p
+            libass:p
+            libcdio-paranoia:p
+            libdvdnav:p
+            libjpeg-turbo:p
+            libplacebo:p
+            lua51:p
+            meson:p
+            ninja:p
+            pkgconf:p
+            python:p
+            rst2pdf:p
+            rubberband:p
+            shaderc:p
+            spirv-cross:p
+            uchardet:p
+            vapoursynth:p
+            vulkan:p
+
+      - name: Build with meson
+        id: build
+        run: |
+          ./ci/build-msys2.sh meson
+
+      - name: Print meson log
+        if: ${{ failure() && steps.build.outcome == 'failure' }}
+        run: |
+          cat ./build/meson-logs/meson-log.txt
+
+      - name: Run meson tests
+        id: tests
+        run: |
+          meson test -C build
+
+      - name: Print meson test log
+        if: ${{ failure() && steps.tests.outcome == 'failure' }}
+        run: |
+          cat ./build/meson-logs/testlog.txt
