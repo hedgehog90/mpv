@@ -11,7 +11,7 @@ option('ta-leak-report', type: 'boolean', value: false, description: 'enable ta 
 # misc features
 option('cdda', type: 'feature', value: 'disabled', description: 'cdda support (libcdio)')
 option('cplugins', type: 'feature', value: 'auto', description: 'C plugins')
-option('dvbin', type: 'feature', value: 'auto', description: 'DVB input module')
+option('dvbin', type: 'feature', value: 'disabled', description: 'DVB input module')
 option('dvdnav', type: 'feature', value: 'disabled', description: 'dvdnav support')
 option('iconv', type: 'feature', value: 'auto', description: 'iconv')
 option('javascript', type: 'feature', value: 'auto', description: 'Javascript (MuJS backend)')
@@ -85,7 +85,6 @@ option('vdpau-gl-x11', type: 'feature', value: 'auto', description: 'VDPAU with 
 option('vaapi', type: 'feature', value: 'auto', description: 'VAAPI acceleration')
 option('vaapi-drm', type: 'feature', value: 'auto', description: 'VAAPI (DRM support)')
 option('vaapi-wayland', type: 'feature', value: 'auto', description: 'VAAPI (Wayland support)')
-option('vaapi-win32', type: 'feature', value: 'auto', description: 'VAAPI (Windows support)')
 option('vaapi-x11', type: 'feature', value: 'auto', description: 'VAAPI (X11 support)')
 option('vulkan', type: 'feature', value: 'auto', description: 'Vulkan context support')
 option('wayland', type: 'feature', value: 'auto', description: 'Wayland')

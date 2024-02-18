@@ -260,7 +260,7 @@ sources = files(
 # compiler stuff
 cc = meson.get_compiler('c')
 
-flags = ['-D_FILE_OFFSET_BITS=64']
+flags = ['-D_GNU_SOURCE', '-D_FILE_OFFSET_BITS=64']
 link_flags = []
 
 test_flags = ['-Werror=implicit-function-declaration',
@@ -304,20 +304,15 @@ features += {'darwin': darwin}
 features += {'posix': posix}
 features += {'dos-paths': win32, 'win32': win32}
 
-mswin_flags = ['-D_WIN32_WINNT=0x0602', '-DWINVER=0x0602', '-DUNICODE',
-               '-DCOBJMACROS', '-DINITGUID', '-U__STRICT_ANSI__', '-DNOMINMAX',
-               '-D_USE_MATH_DEFINES', '-DWIN32_LEAN_AND_MEAN']
+mswin_flags = ['-D_WIN32_WINNT=0x0602', '-DUNICODE', '-DCOBJMACROS',
+               '-DINITGUID', '-U__STRICT_ANSI__']
 
 if host_machine.system() == 'windows'
-    flags += [mswin_flags]
+    flags += [mswin_flags, '-D__USE_MINGW_ANSI_STDIO=1']
 endif
 
 if host_machine.system() == 'cygwin'
     flags += [mswin_flags, '-mwin32']
-endif
-
-if posix
-    flags += ['-D_GNU_SOURCE']
 endif
 
 noexecstack = false
@@ -367,7 +362,6 @@ if not features['win32-threads']
     features += {'pthread-condattr-setclock':
                     cc.has_header_symbol('pthread.h',
                                          'pthread_condattr_setclock',
-                                         args: '-D_GNU_SOURCE',
                                          dependencies: pthreads)}
     dependencies += pthreads
 endif
@@ -399,11 +393,7 @@ endif
 
 if posix
     path_source = files('osdep/path-unix.c')
-    if cc.has_function('fork', prefix : '#include <unistd.h>')
-        subprocess_source = files('osdep/subprocess-posix.c')
-    else
-        subprocess_source = files('osdep/subprocess-dummy.c')
-    endif
+    subprocess_source = files('osdep/subprocess-posix.c')
     sources += files('input/ipc-unix.c',
                      'osdep/poll_wrapper.c',
                      'osdep/terminal-unix.c',
@@ -489,7 +479,6 @@ if features['win32-desktop']
     win32_desktop_libs = [cc.find_library('avrt'),
                           cc.find_library('dwmapi'),
                           cc.find_library('gdi32'),
-                          cc.find_library('imm32'),
                           cc.find_library('ole32'),
                           cc.find_library('uuid'),
                           cc.find_library('uxtheme'),
@@ -604,12 +593,11 @@ if features['cdda']
     sources += files('stream/stream_cdda.c')
 endif
 
-dvbin_opt = get_option('dvbin').require(
+dvbin = get_option('dvbin').require(
     get_option('gpl'),
     error_message: 'the build is not GPL!',
 )
-dvbin = cc.has_header('linux/dvb/frontend.h', required: dvbin_opt)
-features += {'dvbin': dvbin}
+features += {'dvbin': dvbin.allowed()}
 if features['dvbin']
     sources += files('stream/dvb_tune.c',
                      'stream/stream_dvb.c')
@@ -945,7 +933,7 @@ if features['sdl2-video']
     sources += files('video/out/vo_sdl.c')
 endif
 
-shaderc = dependency('shaderc', required: get_option('shaderc').require(features['win32-desktop']))
+shaderc = dependency('shaderc', required: get_option('shaderc'))
 features += {'shaderc': shaderc.found()}
 if features['shaderc']
     dependencies += shaderc
@@ -964,7 +952,7 @@ if features['posix']
     features += {'posix-shm': cc.has_function('shm_open', prefix: '#include <sys/mman.h>')}
 endif
 
-spirv_cross = dependency('spirv-cross-c-shared', required: get_option('spirv-cross').require(features['win32-desktop']))
+spirv_cross = dependency('spirv-cross-c-shared', required: get_option('spirv-cross'))
 features += {'spirv-cross': spirv_cross.found()}
 if features['spirv-cross']
     dependencies += spirv_cross
@@ -1061,7 +1049,7 @@ if features['xv']
     sources += files('video/out/vo_xv.c')
 endif
 
-if features['wayland'] or features['x11'] or features['drm']
+if features['wayland'] or features['x11']
     sources += ('video/out/present_sync.c')
 endif
 
@@ -1413,15 +1401,8 @@ if features['vaapi-x11']
     sources += files('video/out/vo_vaapi.c')
 endif
 
-vaapi_win32 = dependency('libva-win32', required: get_option('vaapi-win32').require(libva.found()))
-features += {'vaapi-win32': vaapi_win32.found()}
-if features['vaapi-win32']
-    dependencies += vaapi_win32
-endif
-
 vaapi = get_option('vaapi').require(libva.found() and (features['vaapi-drm'] or
-                                    features['vaapi-wayland'] or features['vaapi-x11'] or
-                                    features['vaapi-win32']))
+                                    features['vaapi-wayland'] or features['vaapi-x11']))
 features += {'vaapi': vaapi.allowed()}
 
 if features['vaapi']
@@ -1767,13 +1748,6 @@ if get_option('cplayer')
 
     mpv = executable('mpv', objects: libmpv.extract_all_objects(recursive: true), dependencies: dependencies,
                      win_subsystem: 'windows,6.0', install: true)
-
-    # Older meson versions generate this in the player subdirectory.
-    if win32 and meson.version().version_compare('>= 1.3.0')
-        wrapper_sources= 'osdep/win32-console-wrapper.c'
-        executable('mpv', wrapper_sources, c_args: '-municode', link_args: '-municode',
-                   name_suffix: 'com', install: true)
-    endif
 endif
 
 if get_option('tests')
