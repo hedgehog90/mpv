@@ -758,7 +758,6 @@ static void correct_video_pts(struct priv *p, struct mp_image *mpi)
             mpi->pts += frame_time;
         }
     } else {
-        double frame_time = 1.0f / fps;
         double pts_delta = mpi->pts - p->pts;
         if (pts_delta < 0.0001) {
             mpi->pts = p->pts + frame_time;
