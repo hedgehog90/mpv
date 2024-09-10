@@ -312,7 +312,7 @@ struct vo_driver {
     int caps;
 
     // Disable video timing, push frames as quickly as possible, never redraw.
-    bool untimed;
+    // bool untimed;
 
     // The VO is responsible for freeing frames.
     bool frame_owner;
@@ -324,6 +324,9 @@ struct vo_driver {
      *   returns: zero on successful initialization, non-zero on error.
      */
     int (*preinit)(struct vo *vo);
+
+    // Whether to disable video timing, push frames as quickly as possible, never redraw.
+    bool (*query_untimed)(struct vo *vo);
 
     /*
      * Whether the given image format is supported and config() will succeed.
@@ -526,6 +529,7 @@ bool vo_want_redraw(struct vo *vo);
 void vo_seek_reset(struct vo *vo);
 void vo_destroy(struct vo *vo);
 void vo_set_paused(struct vo *vo, bool paused);
+bool vo_query_untimed(struct vo *vo);
 int64_t vo_get_drop_count(struct vo *vo);
 void vo_increment_drop_count(struct vo *vo, int64_t n);
 int64_t vo_get_delayed_count(struct vo *vo);

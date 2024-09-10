@@ -1046,7 +1046,7 @@ static void do_redraw(struct vo *vo)
     in->request_redraw = false;
     bool full_redraw = in->dropped_frame;
     struct vo_frame *frame = NULL;
-    if (!vo->driver->untimed)
+    if (!vo_query_untimed(vo))
         frame = vo_frame_ref(in->current_frame);
     if (frame)
         in->dropped_frame = false;
@@ -1065,6 +1065,11 @@ static void do_redraw(struct vo *vo)
 
     if (frame != &dummy && !vo->driver->frame_owner)
         talloc_free(frame);
+}
+
+bool vo_query_untimed(struct vo *vo)
+{
+    return vo->driver->query_untimed ? vo->driver->query_untimed(vo) : false;
 }
 
 static struct mp_image *get_image_vo(void *ctx, int imgfmt, int w, int h,

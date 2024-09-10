@@ -747,6 +747,9 @@ done:
 static void correct_video_pts(struct priv *p, struct mp_image *mpi)
 {
     mpi->pts *= p->play_dir;
+    
+    double fps = p->fps > 0 ? p->fps : 25;
+    double frame_time = 1.0f / fps;
 
     if (!p->opts->correct_pts || mpi->pts == MP_NOPTS_VALUE) {
         double fps = p->fps > 0 ? p->fps : 25;
@@ -769,6 +772,12 @@ static void correct_video_pts(struct priv *p, struct mp_image *mpi)
         } else {
             mpi->pts += frame_time;
         }
+    } else {
+        // double pts_delta = mpi->pts - p->pts;
+        // if (pts_delta < 0.0001) {
+        //     mpi->pts = p->pts + frame_time;
+        //     MP_WARN(p, "Correcting Video PTS %f -> %f.\n", p->pts, mpi->pts);
+        // }
     }
 
     p->pts = mpi->pts;

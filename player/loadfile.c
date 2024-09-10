@@ -1998,6 +1998,9 @@ void mp_play_files(struct MPContext *mpctx)
 
         if (mpctx->playlist->current)
             play_current_file(mpctx);
+        
+        if (!encode_lavc_try_reset_fail(mpctx->encode_lavc_ctx))
+            break; // It's time to stop.
 
         if (mpctx->stop_play == PT_QUIT)
             break;

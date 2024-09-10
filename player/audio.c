@@ -889,6 +889,11 @@ void fill_audio_out_buffers(struct MPContext *mpctx)
         mp_decoder_wrapper_get_pts_reset(ao_c->track->dec))
     {
         MP_WARN(mpctx, "Reset playback due to audio timestamp reset.\n");
+        
+        // necessary to clear output buffers to prevent audio_status getting
+        // stuck in STATUS_SYNCING in encoding mode.
+        clear_audio_output_buffers(mpctx);
+
         reset_playback_state(mpctx);
         mp_wakeup_core(mpctx);
     }

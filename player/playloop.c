@@ -1214,11 +1214,25 @@ static void handle_eof(struct MPContext *mpctx)
      * and video streams to "disabled" at runtime. Handle this by waiting
      * rather than immediately stopping playback due to EOF.
      */
-    if ((mpctx->ao_chain || mpctx->vo_chain) && !prevent_eof &&
-        mpctx->audio_status == STATUS_EOF &&
-        mpctx->video_status == STATUS_EOF &&
-        !mpctx->stop_play)
+    // if ((mpctx->ao_chain || mpctx->vo_chain) && !prevent_eof &&
+    //     mpctx->audio_status == STATUS_EOF &&
+    //     mpctx->video_status == STATUS_EOF &&
+    //     !mpctx->stop_play)
+    // {
+    //     mpctx->stop_play = AT_END_OF_FILE;
+    // }
+
+    bool eof = false;
+    bool is_sparse = mpctx->vo_chain ? mpctx->vo_chain->is_sparse : false;
+    if (mpctx->opts->end_on_eof)
+        eof = (mpctx->video_status == STATUS_EOF && !is_sparse) ||
+              mpctx->audio_status == STATUS_EOF;
+    else 
+        eof = mpctx->audio_status == STATUS_EOF && mpctx->video_status == STATUS_EOF;
+    if ((mpctx->ao_chain || mpctx->vo_chain) && !prevent_eof && eof && !mpctx->stop_play)
     {
+        if (mpctx->audio_status != STATUS_EOF)
+            clear_audio_output_buffers(mpctx);
         mpctx->stop_play = AT_END_OF_FILE;
     }
 }

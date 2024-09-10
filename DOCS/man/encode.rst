@@ -80,6 +80,16 @@ You can encode files from one format/codec to another using this facility.
 ``--ocopy-metadata=<yes|no>``
     Copy metadata from input files to output files when encoding (default: yes).
 
+``--oforce-key-frames=<value>``
+    Replicates FFmpeg argument -force_key_frames for output.
+    Useful for maintaining a regular keyframe interval ragrdless of frame rate.
+    Only allows value with the prefix 'expr:'
+
+    .. admonition:: Example
+
+        "``--oforce-key-frames=expr:gte(t,n_forced*2)``"
+            Forces a keyframe once every 2 seconds.
+
 ``--oset-metadata=<metadata-tag[,metadata-tag,...]>``
     Specifies metadata to include in the output file.
     Supported keys vary between output formats. For example, Matroska (MKV) and

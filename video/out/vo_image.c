@@ -134,6 +134,11 @@ static void uninit(struct vo *vo)
 {
 }
 
+static bool query_untimed(struct vo *vo)
+{
+    return true;
+}
+
 static int preinit(struct vo *vo)
 {
     struct priv *p = vo->priv;
@@ -152,7 +157,7 @@ const struct vo_driver video_out_image =
 {
     .description = "Write video frames to image files",
     .name = "image",
-    .untimed = true,
+    .query_untimed = query_untimed,
     .priv_size = sizeof(struct priv),
     .preinit = preinit,
     .query_format = query_format,
