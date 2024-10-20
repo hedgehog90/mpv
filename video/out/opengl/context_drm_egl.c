@@ -278,36 +278,32 @@ static void update_framebuffer_from_bo(struct ra_ctx *ctx, struct gbm_bo *bo)
     fb->height = gbm_bo_get_height(bo);
     uint64_t modifier = gbm_bo_get_modifier(bo);
 
-    int ret;
-    if (p->num_gbm_modifiers == 0 || modifier == DRM_FORMAT_MOD_INVALID) {
-        uint32_t stride = gbm_bo_get_stride(bo);
-        uint32_t handle = gbm_bo_get_handle(bo).u32;
-        ret = drmModeAddFB2(fb->fd, fb->width, fb->height,
-                            p->gbm_format,
-                            (uint32_t[4]){handle, 0, 0, 0},
-                            (uint32_t[4]){stride, 0, 0, 0},
-                            (uint32_t[4]){0, 0, 0, 0},
-                            &fb->id, 0);
-    } else {
+    uint32_t handles[4] = {0};
+    uint32_t strides[4] = {0};
+    uint32_t offsets[4] = {0};
+    uint64_t modifiers[4] = {0};
+    uint32_t flags = 0;
+
+    const int num_planes = gbm_bo_get_plane_count(bo);
+    for (int i = 0; i < num_planes; ++i) {
+        handles[i] = gbm_bo_get_handle_for_plane(bo, i).u32;
+        strides[i] = gbm_bo_get_stride_for_plane(bo, i);
+        offsets[i] = gbm_bo_get_offset(bo, i);
+        modifiers[i] = modifier;
+    }
+
+    if (modifier && modifier != DRM_FORMAT_MOD_INVALID) {
         MP_VERBOSE(ctx, "GBM surface using modifier 0x%"PRIX64"\n", modifier);
+        flags = DRM_MODE_FB_MODIFIERS;
+    }
 
-        uint32_t handles[4] = {0};
-        uint32_t strides[4] = {0};
-        uint32_t offsets[4] = {0};
-        uint64_t modifiers[4] = {0};
-
-        const int num_planes = gbm_bo_get_plane_count(bo);
-        for (int i = 0; i < num_planes; ++i) {
-            handles[i] = gbm_bo_get_handle_for_plane(bo, i).u32;
-            strides[i] = gbm_bo_get_stride_for_plane(bo, i);
-            offsets[i] = gbm_bo_get_offset(bo, i);
-            modifiers[i] = modifier;
-        }
-
-        ret = drmModeAddFB2WithModifiers(fb->fd, fb->width, fb->height,
+    int ret = drmModeAddFB2WithModifiers(fb->fd, fb->width, fb->height,
                                          p->gbm_format,
                                          handles, strides, offsets, modifiers,
-                                         &fb->id, DRM_MODE_FB_MODIFIERS);
+                                         &fb->id, flags);
+    if (ret) {
+        ret = drmModeAddFB2(fb->fd, fb->width, fb->height, p->gbm_format,
+                            handles, strides, offsets, &fb->id, 0);
     }
     if (ret) {
         MP_ERR(ctx->vo, "Failed to create framebuffer: %s\n", mp_strerror(errno));
@@ -491,7 +487,8 @@ static void drm_egl_uninit(struct ra_ctx *ctx)
         if (p->gbm.surface)
             gbm_surface_destroy(p->gbm.surface);
         eglTerminate(p->egl.display);
-        gbm_device_destroy(p->gbm.device);
+        if (p->gbm.device)
+            gbm_device_destroy(p->gbm.device);
 
         if (p->drm_params.render_fd != -1)
             close(p->drm_params.render_fd);
@@ -739,6 +736,7 @@ static void drm_egl_wakeup(struct ra_ctx *ctx)
 const struct ra_ctx_fns ra_ctx_drm_egl = {
     .type           = "opengl",
     .name           = "drm",
+    .description    = "DRM/EGL",
     .reconfig       = drm_egl_reconfig,
     .control        = drm_egl_control,
     .init           = drm_egl_init,

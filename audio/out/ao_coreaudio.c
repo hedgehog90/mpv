@@ -16,6 +16,7 @@
  */
 
 #include <CoreAudio/HostTime.h>
+#include <libavutil/mathematics.h>
 
 #include "ao.h"
 #include "internal.h"
@@ -33,6 +34,9 @@
 #define IDLE_TIME 7 * NSEC_PER_SEC
 
 struct priv {
+    // This must be put in the front
+    struct coreaudio_cb_sem sem;
+
     AudioDeviceID device;
     AudioUnit audio_unit;
 
@@ -89,14 +93,8 @@ static OSStatus render_cb_lpcm(void *ctx, AudioUnitRenderActionFlags *aflags,
 
     int64_t end = mp_time_ns();
     end += p->hw_latency_ns + ca_get_latency(ts) + ca_frames_to_ns(ao, frames);
-    int samples = ao_read_data(ao, planes, frames, end);
-
-    if (samples == 0)
-        *aflags |= kAudioUnitRenderAction_OutputIsSilence;
-
-    for (int n = 0; n < buffer_list->mNumberBuffers; n++)
-        buffer_list->mBuffers[n].mDataByteSize = samples * ao->sstride;
-
+    // don't use the returned sample count since CoreAudio always expects full frames
+    ao_read_data(ao, planes, frames, end, NULL, true, true);
     return noErr;
 }
 
@@ -184,6 +182,7 @@ static int init(struct ao *ao)
         goto coreaudio_error;
 
     reinit_latency(ao);
+    ao->device_buffer = av_rescale(p->hw_latency_ns, ao->samplerate, 1000000000) * 2;
 
     p->queue = dispatch_queue_create("io.mpv.coreaudio_stop_during_idle",
                                      DISPATCH_QUEUE_SERIAL);
@@ -547,6 +546,12 @@ const struct ao_driver audio_out_coreaudio = {
     .hotplug_uninit = hotplug_uninit,
     .list_devs      = ca_get_device_list,
     .priv_size      = sizeof(struct priv),
+    .priv_defaults  = &(const struct priv){
+        .sem = (struct coreaudio_cb_sem){
+            .mutex = MP_STATIC_MUTEX_INITIALIZER,
+            .cond = MP_STATIC_COND_INITIALIZER,
+        }
+    },
     .options = (const struct m_option[]){
         {"change-physical-format", OPT_BOOL(change_physical_format)},
         {0}

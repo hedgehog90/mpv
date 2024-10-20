@@ -52,9 +52,27 @@ const struct m_sub_options macos_conf = {
         {"macos-render-timer", OPT_CHOICE(macos_render_timer,
             {"callback", RENDER_TIMER_CALLBACK}, {"precise", RENDER_TIMER_PRECISE},
             {"system", RENDER_TIMER_SYSTEM}, {"feedback", RENDER_TIMER_PRESENTATION_FEEDBACK})},
+        {"macos-menu-shortcuts", OPT_BOOL(macos_menu_shortcuts)},
+        {"macos-bundle-path", OPT_STRINGLIST(macos_bundle_path)},
         {"cocoa-cb-sw-renderer", OPT_CHOICE(cocoa_cb_sw_renderer,
             {"auto", -1}, {"no", 0}, {"yes", 1})},
         {"cocoa-cb-10bit-context", OPT_BOOL(cocoa_cb_10bit_context)},
+        {"cocoa-cb-output-csp", OPT_CHOICE(cocoa_cb_output_csp,
+            {"auto", MAC_CSP_AUTO},
+            {"display-p3", MAC_CSP_DISPLAY_P3},
+            {"display-p3-hlg", MAC_CSP_DISPLAY_P3_HLG},
+            {"display-p3-pq", MAC_CSP_DISPLAY_P3_PQ},
+            {"display-p3-linear", MAC_CSP_DISPLAY_P3_LINEAR},
+            {"dci-p3", MAC_CSP_DCI_P3},
+            {"bt.2020", MAC_CSP_BT_2020},
+            {"bt.2020-linear", MAC_CSP_BT_2020_LINEAR},
+            {"bt.2100-hlg", MAC_CSP_BT_2100_HLG},
+            {"bt.2100-pq", MAC_CSP_BT_2100_PQ},
+            {"bt.709", MAC_CSP_BT_709},
+            {"srgb", MAC_CSP_SRGB},
+            {"srgb-linear", MAC_CSP_SRGB_LINEAR},
+            {"rgb-linear", MAC_CSP_RGB_LINEAR},
+            {"adobe", MAC_CSP_ADOBE})},
         {0}
     },
     .size = sizeof(struct macos_opts),
@@ -62,8 +80,14 @@ const struct m_sub_options macos_conf = {
         .macos_title_bar_color = {0, 0, 0, 0},
         .macos_fs_animation_duration = -1,
         .macos_render_timer = RENDER_TIMER_CALLBACK,
+        .macos_menu_shortcuts = true,
+        .macos_bundle_path = (char *[]){
+            "/usr/local/bin", "/usr/local/sbin", "/opt/local/bin", "/opt/local/sbin",
+            "/opt/homebrew/bin", "/opt/homebrew/sbin", NULL
+        },
         .cocoa_cb_sw_renderer = -1,
-        .cocoa_cb_10bit_context = true
+        .cocoa_cb_10bit_context = true,
+        .cocoa_cb_output_csp = MAC_CSP_AUTO,
     },
 };
 
@@ -91,6 +115,7 @@ const struct m_sub_options *app_bridge_vo_conf(void)
     return &vo_sub_opts;
 }
 
+#if HAVE_SWIFT
 void cocoa_init_media_keys(void)
 {
     [[AppHub shared] startRemote];
@@ -120,4 +145,4 @@ int cocoa_main(int argc, char *argv[])
 {
     return [(Application *)[Application sharedApplication] main:argc :argv];
 }
-
+#endif

@@ -195,7 +195,7 @@ AudioChannelLabel mp_speaker_id_to_ca_label(int speaker_id)
     return -1; // kAudioChannelLabel_Unknown
 }
 
-#if HAVE_COREAUDIO
+#if HAVE_COREAUDIO || HAVE_AVFOUNDATION
 void ca_log_layout(struct ao *ao, int l, AudioChannelLayout *layout)
 {
     if (!mp_msg_test(ao->log, l))
@@ -297,9 +297,9 @@ AudioChannelLayout *ca_find_standard_layout(void *talloc_ctx, AudioChannelLayout
         if (l->mNumberChannelDescriptions != r->mNumberChannelDescriptions)
             goto mismatch;
 
-        for (int i = 0; i < l->mNumberChannelDescriptions; ++i) {
-            AudioChannelDescription *ld = l->mChannelDescriptions + i;
-            AudioChannelDescription *rd = r->mChannelDescriptions + i;
+        for (int j = 0; j < l->mNumberChannelDescriptions; ++j) {
+            AudioChannelDescription *ld = l->mChannelDescriptions + j;
+            AudioChannelDescription *rd = r->mChannelDescriptions + j;
             if (ld->mChannelLabel == rd->mChannelLabel)
                 continue;
             // XXX: we cannot handle channels with coordinates

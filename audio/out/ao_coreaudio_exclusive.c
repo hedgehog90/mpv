@@ -52,6 +52,9 @@
 #include "audio/out/ao_coreaudio_utils.h"
 
 struct priv {
+    // This must be put in the front
+    struct coreaudio_cb_sem sem;
+
     AudioDeviceID device;   // selected device
 
     bool paused;
@@ -181,7 +184,7 @@ static OSStatus render_cb_compressed(
     end += p->hw_latency_ns + ca_get_latency(ts)
         + ca_frames_to_ns(ao, pseudo_frames);
 
-    ao_read_data(ao, &buf.mData, pseudo_frames, end);
+    ao_read_data(ao, &buf.mData, pseudo_frames, end, NULL, true, true);
 
     if (p->spdif_hack)
         bad_hack_mygodwhy(buf.mData, pseudo_frames * ao->channels.num);
@@ -459,6 +462,10 @@ const struct ao_driver audio_out_coreaudio_exclusive = {
     .list_devs = ca_get_device_list,
     .priv_size = sizeof(struct priv),
     .priv_defaults = &(const struct priv){
+        .sem = (struct coreaudio_cb_sem){
+            .mutex = MP_STATIC_MUTEX_INITIALIZER,
+            .cond = MP_STATIC_COND_INITIALIZER,
+        },
         .hog_pid = -1,
         .stream = 0,
         .stream_idx = -1,

@@ -78,6 +78,12 @@ struct mp_codec_params {
     // Corresponding codec profile
     const char *codec_profile;
 
+    // E.g. "h264" (usually corresponds to AVCodec.name)
+    const char *decoder;
+
+    // Usually corresponds to AVCodec.long_name
+    const char *decoder_desc;
+
     // Usually a FourCC, exact meaning depends on codec.
     unsigned int codec_tag;
 
@@ -114,6 +120,10 @@ struct mp_codec_params {
     struct pl_color_space color; // colorspace info where available
     struct pl_color_repr repr;   // color representaion info where available
     struct mp_rect crop;         // crop to be applied
+
+    bool dovi;
+    uint8_t dv_profile;
+    uint8_t dv_level;
 
     // STREAM_VIDEO + STREAM_AUDIO
     int bits_per_coded_sample;

@@ -16,7 +16,6 @@
  */
 
 #include <stdio.h>
-#include <unistd.h>
 #include <config.h>
 
 #if HAVE_POSIX
@@ -244,6 +243,8 @@ static int reconfig(struct vo *vo, struct mp_image_params *params)
     if (!p->frame)
         return -1;
 
+    mp_image_clear(p->frame, 0, 0, p->frame->w, p->frame->h);
+
     if (mp_sws_reinit(p->sws) < 0)
         return -1;
 
@@ -299,6 +300,7 @@ static void flip_page(struct vo *vo)
 static void uninit(struct vo *vo)
 {
     WRITE_STR(TERM_ESC_RESTORE_CURSOR);
+    terminal_set_mouse_input(false);
     WRITE_STR(TERM_ESC_NORMAL_SCREEN);
     struct priv *p = vo->priv;
     talloc_free(p->frame);
@@ -328,6 +330,7 @@ static int preinit(struct vo *vo)
     }
 
     WRITE_STR(TERM_ESC_HIDE_CURSOR);
+    terminal_set_mouse_input(true);
     WRITE_STR(TERM_ESC_ALT_SCREEN);
 
     return 0;

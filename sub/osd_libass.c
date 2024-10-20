@@ -41,10 +41,6 @@ static const char osd_font_pfb[] =
 static void append_ass(struct ass_state *ass, struct mp_osd_res *res,
                        ASS_Image **img_list, bool *changed);
 
-void osd_init_backend(struct osd_state *osd)
-{
-}
-
 static void create_ass_renderer(struct osd_state *osd, struct ass_state *ass)
 {
     if (ass->render)
@@ -211,6 +207,10 @@ void osd_mangle_ass(bstr *dst, const char *in, bool replace_newlines)
             in += 1;
             continue;
         }
+        if (*in == TERM_MSG_0[0]) {
+            in += 1;
+            continue;
+        }
         if (escape_ass && *in == '{')
             bstr_xappend(NULL, dst, bstr0("\\"));
         // Replace newlines with \N for escape-ass. This is necessary to apply
@@ -256,7 +256,7 @@ static ASS_Style *prepare_osd_ass(struct osd_state *osd, struct osd_object *obj)
 
     double playresy = obj->ass.track->PlayResY;
     // Compensate for libass and mp_ass_set_style scaling the font etc.
-    if (!opts->osd_scale_by_window)
+    if (!opts->osd_scale_by_window && obj->vo_res.h)
         playresy *= 720.0 / obj->vo_res.h;
 
     ASS_Style *style = get_style(&obj->ass, "OSD");
@@ -375,18 +375,15 @@ static void get_osd_bar_box(struct osd_state *osd, struct osd_object *obj,
 
     mp_ass_set_style(style, track->PlayResY, opts->osd_style);
 
-    if (osd->opts->osd_style->back_color.a) {
-        // override the default osd opaque-box into plain outline. Otherwise
-        // the opaque box is not aligned with the bar (even without shadow),
-        // and each bar ass event gets its own opaque box - breaking the bar.
-        style->BackColour = MP_ASS_COLOR(opts->osd_style->shadow_color);
-        style->BorderStyle = 1; // outline
-    }
+    // override the default osd opaque-box into plain outline. Otherwise
+    // the opaque box is not aligned with the bar (even without shadow),
+    // and each bar ass event gets its own opaque box - breaking the bar.
+    style->BorderStyle = 1; // outline
 
     *o_w = track->PlayResX * (opts->osd_bar_w / 100.0);
     *o_h = track->PlayResY * (opts->osd_bar_h / 100.0);
 
-    style->Outline = opts->osd_bar_border_size;
+    style->Outline = opts->osd_bar_outline_size;
     // Rendering with shadow is broken (because there's more than one shape)
     style->Shadow = 0;
 
@@ -428,7 +425,7 @@ static void update_progbar(struct osd_state *osd, struct osd_object *obj)
 
     struct ass_draw *d = &(struct ass_draw) { .scale = 4 };
 
-    if (osd->opts->osd_style->back_color.a) {
+    if (osd->opts->osd_style->back_color.a && osd->opts->osd_style->border_style != 1) {
         // the bar style always ignores the --osd-back-color config - it messes
         // up the bar. draw an artificial box at the original back color.
         struct m_color bc = osd->opts->osd_style->back_color;

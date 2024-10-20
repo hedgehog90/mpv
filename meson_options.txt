@@ -4,6 +4,7 @@ option('cplayer', type: 'boolean', value: true, description: 'mpv CLI player')
 option('libmpv', type: 'boolean', value: false, description: 'libmpv library')
 option('build-date', type: 'boolean', value: true, description: 'include compile timestamp in binary')
 option('tests', type: 'boolean', value: false, description: 'meson unit tests')
+option('fuzzers', type: 'boolean', value: false, description: 'fuzzer binaries')
 # Reminder: normally always built, but enabled by MPV_LEAK_REPORT.
 # Building it can be disabled only by defining NDEBUG through CFLAGS.
 option('ta-leak-report', type: 'boolean', value: false, description: 'enable ta leak report by default (development only)')
@@ -102,14 +103,21 @@ option('gl-dxinterop-d3d9', type: 'feature', value: 'auto', description: 'OpenGL
 option('ios-gl', type: 'feature', value: 'auto', description: 'iOS OpenGL ES interop support')
 option('videotoolbox-gl', type: 'feature', value: 'auto', description: 'Videotoolbox with OpenGL')
 option('videotoolbox-pl', type: 'feature', value: 'auto', description: 'Videotoolbox with libplacebo')
-option('vulkan-interop', type: 'feature', value: 'auto', description: 'Vulkan graphics interop')
 
 # macOS features
+option('macos-10-15-4-features', type: 'feature', value: 'auto', description: 'macOS 10.15.4 SDK Features')
+option('macos-11-features', type: 'feature', value: 'auto', description: 'macOS 11 SDK Features')
+option('macos-11-3-features', type: 'feature', value: 'auto', description: 'macOS 11.3 SDK Features')
+option('macos-12-features', type: 'feature', value: 'auto', description: 'macOS 12 SDK Features')
 option('macos-cocoa-cb', type: 'feature', value: 'auto', description: 'macOS libmpv backend')
 option('macos-media-player', type: 'feature', value: 'auto', description: 'macOS Media Player support')
 option('macos-touchbar', type: 'feature', value: 'auto', description: 'macOS Touch Bar support')
 option('swift-build', type: 'feature', value: 'auto', description: 'macOS Swift build tools')
 option('swift-flags', type: 'string', description: 'Optional Swift compiler flags')
+
+# Windows features
+option('win32-smtc', type: 'feature', value: 'auto', description: 'Enable Media Control support')
+option('win32-subsystem', type : 'string', value: 'windows', description : 'Windows subsystem to use for mpv.exe')
 
 # manpages
 option('html-build', type: 'feature', value: 'disabled', description: 'HTML manual generation')

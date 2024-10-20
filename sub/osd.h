@@ -126,6 +126,7 @@ enum mp_osd_font_codepoints {
     OSD_BRIGHTNESS = 0x0A,
     OSD_HUE = 0x0B,
     OSD_BALANCE = 0x0C,
+    OSD_REV = 0x0D,
     OSD_PANSCAN = 0x50,
 
     OSD_PB_START = 0x10,
@@ -144,10 +145,10 @@ struct osd_style_opts {
     char *font;
     float font_size;
     struct m_color color;
-    struct m_color border_color;
-    struct m_color shadow_color;
+    struct m_color outline_color;
     struct m_color back_color;
-    float border_size;
+    int border_style;
+    float outline_size;
     float shadow_offset;
     float spacing;
     int margin_x;

@@ -65,7 +65,7 @@ function _mpv_generate_arguments {
         _mpv_completion_arguments+="$name"
       else
         # Find the parent option and use that with this option's name
-        _mpv_completion_arguments+="${_mpv_completion_arguments[(R)${name%-*}=*]/*=/$name=}"
+        _mpv_completion_arguments+="${(S)_mpv_completion_arguments[(R)${name%-*}=*]/*=/$name=}"
       fi
 
     elif [[ $desc == Print* ]]; then
@@ -101,7 +101,7 @@ function _mpv_generate_arguments {
 
         entry+='->files'
 
-      elif [[ $name == (ao|vo|af|vf|profile|audio-device|vulkan-device) ]]; then
+      elif [[ $desc = 'Object settings list'* || $name == (profile|audio-device|vulkan-device) ]]; then
 
         entry+="->parse-help-$name"
 

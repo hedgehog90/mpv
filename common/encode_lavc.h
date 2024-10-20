@@ -130,4 +130,6 @@ enum AVPictureType encoder_get_pict_type(struct encode_lavc_context *enc, double
 // Caller needs to acquire encode_lavc_context.lock (or call it from on_ready).
 AVRational encoder_get_mux_timebase_unlocked(struct encoder_context *p);
 
+void encoder_update_log(struct mpv_global *global);
+
 #endif

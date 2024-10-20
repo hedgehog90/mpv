@@ -3,7 +3,7 @@ CONSOLE
 
 The console is a REPL for mpv input commands. It is displayed on the video
 window. It also shows log messages. It can be disabled entirely using the
-``--load-osd-console=no`` option.
+``--load-console=no`` option.
 
 Keybindings
 -----------
@@ -76,6 +76,9 @@ PGUP
 PGDN
     Stop navigating the command history.
 
+Ctrl+r
+    Search the command history.
+
 INSERT
     Toggle insert mode.
 
@@ -94,6 +97,18 @@ Shift+TAB
 
 Ctrl+l
     Clear all log messages from the console.
+
+MBTN_RIGHT
+    Hide the console.
+
+MBTN_MID
+    Paste text (uses the primary selection on X11 and Wayland).
+
+WHEEL_UP
+    Move back in the command history.
+
+WHEEL_DOWN
+    Move forward in the command history.
 
 Commands
 --------
@@ -123,22 +138,13 @@ Configuration
 
 This script can be customized through a config file ``script-opts/console.conf``
 placed in mpv's user directory and through the ``--script-opts`` command-line
-option. The configuration syntax is described in `ON SCREEN CONTROLLER`_.
+option. The configuration syntax is described in `mp.options functions`_.
 
 Key bindings can be changed in a standard way, see for example stats.lua
 documentation.
 
 Configurable Options
 ~~~~~~~~~~~~~~~~~~~~
-
-``scale``
-    Default: 1
-
-    All drawing is scaled by this value, including the text borders and the
-    cursor.
-
-    If the VO backend in use has HiDPI scale reporting implemented, the option
-    value is scaled with the reported HiDPI scale.
 
 ``font``
     Default: unset (picks a hardcoded font depending on detected platform)
@@ -151,7 +157,7 @@ Configurable Options
     Default: 16
 
     Set the font size used for the REPL and the console. This will be
-    multiplied by "scale".
+    multiplied by ``display-hidpi-scale``.
 
 ``border_size``
     Default: 1
@@ -167,7 +173,6 @@ Configurable Options
     Default: true
 
     Remove duplicate entries in history as to only keep the latest one.
-    multiplied by "scale."
 
 ``font_hw_ratio``
     Default: auto

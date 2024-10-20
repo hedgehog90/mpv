@@ -47,7 +47,8 @@ See `COMMAND INTERFACE`_ and `Key names`_ sections for more details on
 configuring keybindings.
 
 See also ``--input-test`` for interactive binding details by key, and the
-`stats`_ built-in script for key bindings list (including print to terminal).
+`stats`_ built-in script for key bindings list (including print to terminal). By
+default, the ? key toggles the display of this list.
 
 Keyboard Control
 ----------------
@@ -116,6 +117,9 @@ Q
 / and *
     Decrease/increase volume.
 
+KP_DIVIDE and KP_MULTIPLY
+    Decrease/increase volume.
+
 9 and 0
     Decrease/increase volume.
 
@@ -178,8 +182,8 @@ u
     style. See ``--sub-ass-override`` for more info.
 
 V
-    Toggle subtitle VSFilter aspect compatibility mode. See
-    ``--sub-ass-vsfilter-aspect-compat`` for more info.
+    Cycle through which video data gets used for ASS rendering.
+    See ``--sub-ass-use-video-data`` for more info.
 
 r and R
     Move subtitles up/down. The ``t`` key does the same as ``R`` currently, but
@@ -237,6 +241,10 @@ i and I
     file such as codec, framerate, number of dropped frames and so on. See
     `STATS`_ for more information.
 
+?
+    Toggle an overlay displaying the active key bindings. See `STATS`_ for more
+    information.
+
 DEL
     Cycle OSC visibility between never / auto (mouse-move) / always
 
@@ -269,6 +277,46 @@ Alt+2 (and Command+2 on macOS)
 
 Command + f (macOS only)
     Toggle fullscreen (see also ``--fs``).
+
+(The following keybindings open a selector in the console that lets you choose
+from a list of items by typing part of the desired item, by clicking the desired
+item, or by navigating them with keybindings: ``Down`` and ``Ctrl+n`` go down,
+``Up`` and ``Ctrl+p`` go up, ``Page down`` and ``Ctrl+f`` scroll down one page,
+and ``Page up`` and ``Ctrl+b`` scroll up one page.)
+
+g-p
+    Select a playlist entry.
+
+g-s
+    Select a subtitle track.
+
+g-S
+    Select a secondary subtitle track.
+
+g-a
+    Select an audio track.
+
+g-v
+    Select a video track.
+
+g-t
+    Select a track of any type.
+
+g-c
+    Select a chapter.
+
+g-l
+    Select a subtitle line to seek to. This currently requires ``ffmpeg`` in
+    ``PATH``, or in the same folder as mpv on Windows.
+
+g-d
+    Select an audio device.
+
+g-b
+    Select a defined input binding.
+
+g-r
+    Show the values of all properties.
 
 (The following keys are valid if you have a keyboard with multimedia keys.)
 
@@ -557,7 +605,7 @@ Suffix        Meaning
 -pre          Prepend 1 or more items (same syntax as -set)
 -clr          Clear the option (remove all items)
 -remove       Delete item if present (does not interpret escapes)
--toggle       Append an item, or remove if if it already exists (no escapes)
+-toggle       Append an item, or remove it if it already exists (no escapes)
 ============= ===============================================
 
 ``-append`` is meant as a simple way to append a single item without having
@@ -591,23 +639,24 @@ appropriate structured data type.
 
 Prior to mpv 0.33, ``:`` was also recognized as separator by ``-set``.
 
-Filter options
-~~~~~~~~~~~~~~
+Object settings list options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This is a very complex option type for the ``--af`` and ``--vf`` options only.
-They often require complicated escaping. See `VIDEO FILTERS`_ for details. They
-support the following operations:
+This is a very complex option type for some options, such as ``--af`` and ``--vf``.
+They often require complicated escaping. See `VIDEO FILTERS`_ for details.
+
+They support the following operations:
 
 ============= ===============================================
 Suffix        Meaning
 ============= ===============================================
--set          Set a list of filters (using ``,`` as separator)
--append       Append single filter
--add          Append 1 or more filters (same syntax as -set)
--pre          Prepend 1 or more filters (same syntax as -set)
--clr          Clear the option (remove all filters)
--remove       Delete filter if present
--toggle       Append a filter, or remove if if it already exists
+-set          Set a list of items (using ``,`` as separator)
+-append       Append single item
+-add          Append 1 or more items (same syntax as -set)
+-pre          Prepend 1 or more items (same syntax as -set)
+-clr          Clear the option (remove all items)
+-remove       Delete item if present
+-toggle       Append an item, or remove it if it already exists
 -help         Pseudo operation that prints a help text to the terminal
 ============= ===============================================
 
@@ -629,6 +678,8 @@ aliases for the proper option with ``-append`` action. For example,
 Options of this type can be changed at runtime using the ``change-list``
 command, which takes the suffix (without the ``-``) as separate operation
 parameter.
+
+An object settings list can hold up to 100 elements.
 
 CONFIGURATION FILES
 ===================
@@ -991,17 +1042,17 @@ There are three choices for using mpv from other programs or scripts:
 
        Your code should work even if you pass ``--terminal=no``. Do not attempt
        to simulate user input by sending terminal control codes to mpv's stdin.
-       If you need interactive control, using ``--input-ipc-server`` is
-       recommended. This gives you access to the `JSON IPC`_  over unix domain
-       sockets (or named pipes on Windows).
+       If you need interactive control, using ``--input-ipc-server`` or
+       ``--input-ipc-client`` is recommended. This gives you access to the
+       `JSON IPC`_  over unix domain sockets (or named pipes on Windows).
 
        Depending on what you do, passing ``--no-config`` or ``--config-dir`` may
        be a good idea to avoid conflicts with the normal mpv user configuration
        intended for CLI playback.
 
-       Using ``--input-ipc-server`` is also suitable for purposes like remote
-       control (however, the IPC protocol itself is not "secure" and not
-       intended to be so).
+       Using ``--input-ipc-server`` or ``--input-ipc-client`` is also suitable for
+       purposes like remote control (however, the IPC protocol itself is not
+       "secure" and not intended to be so).
 
     2. Using libmpv. This is generally recommended when mpv is used as playback
        backend for a completely different application. The provided C API is
@@ -1553,6 +1604,8 @@ FILES
 Note that this section assumes Linux/BSD. On other platforms the paths may be different.
 For Windows-specifics, see `FILES ON WINDOWS`_ section.
 
+All configuration files should be encoded in UTF-8.
+
 ``/usr/local/etc/mpv/mpv.conf``
     mpv system-wide settings (depends on ``--prefix`` passed to configure - mpv
     in default configuration will use ``/usr/local/etc/mpv/`` as config
@@ -1697,5 +1750,5 @@ FILES ON MACOS
 
 On macOS the watch later directory is located at ``~/.config/mpv/watch_later/``
 and the cache directory is set to ``~/Library/Caches/io.mpv/``. These directories
-can't be overwritten by enviroment variables.
+can't be overwritten by environment variables.
 Everything else is the same as `FILES`_.

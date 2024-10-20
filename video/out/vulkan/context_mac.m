@@ -56,6 +56,11 @@ static bool mac_vk_init(struct ra_ctx *ctx)
     struct mpvk_ctx *vk = &p->vk;
     int msgl = ctx->opts.probing ? MSGL_V : MSGL_ERR;
 
+    if (!NSApp) {
+        MP_ERR(ctx, "Failed to initialize macvk context, no NSApplication initialized.\n");
+        goto error;
+    }
+
     if (!mpvk_init(vk, ctx, VK_EXT_METAL_SURFACE_EXTENSION_NAME))
         goto error;
 
@@ -128,6 +133,7 @@ static int mac_vk_control(struct ra_ctx *ctx, int *events, int request, void *ar
 const struct ra_ctx_fns ra_ctx_vulkan_mac = {
     .type           = "vulkan",
     .name           = "macvk",
+    .description    = "mac/Vulkan (via Metal)",
     .reconfig       = mac_vk_reconfig,
     .control        = mac_vk_control,
     .init           = mac_vk_init,

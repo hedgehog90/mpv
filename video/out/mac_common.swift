@@ -29,7 +29,7 @@ class MacCommon: Common {
         let log = LogHelper(mp_log_new(vo, vo.pointee.log, "mac"))
         let option = OptionHelper(vo, vo.pointee.global)
         super.init(option, log)
-        self.vo = vo
+        eventsLock.withLock { self.vo = vo }
         input = InputHelper(vo.pointee.input_ctx, option)
         presentation = Presentation(common: self)
         timer = PreciseTimer(common: self)
@@ -41,13 +41,13 @@ class MacCommon: Common {
     }
 
     @objc func config(_ vo: UnsafeMutablePointer<vo>) -> Bool {
-        self.vo = vo
+        eventsLock.withLock { self.vo = vo }
 
         DispatchQueue.main.sync {
             let previousActiveApp = getActiveApp()
             initApp()
 
-            let (_, wr) = getInitProperties(vo)
+            let (_, wr, _) = getInitProperties(vo)
 
             guard let layer = self.layer else {
                 log.error("Something went wrong, no MetalLayer was initialized")
@@ -60,9 +60,7 @@ class MacCommon: Common {
                 initWindowState()
             }
 
-            if !NSEqualSizes(window?.unfsContentFramePixel.size ?? NSZeroSize, wr.size) &&
-               option.vo.auto_window_resize
-            {
+            if option.vo.auto_window_resize {
                 window?.updateSize(wr.size)
             }
 
@@ -93,7 +91,7 @@ class MacCommon: Common {
     @objc func swapBuffer() {
         if option.mac.macos_render_timer > RENDER_TIMER_SYSTEM {
             swapLock.lock()
-            while(swapTime < 1) {
+            while swapTime < 1 {
                 swapLock.wait()
             }
             swapTime = 0
@@ -111,11 +109,10 @@ class MacCommon: Common {
      }
 
     override func displayLinkCallback(_ displayLink: CVDisplayLink,
-                                            _ inNow: UnsafePointer<CVTimeStamp>,
-                                     _ inOutputTime: UnsafePointer<CVTimeStamp>,
-                                          _ flagsIn: CVOptionFlags,
-                                         _ flagsOut: UnsafeMutablePointer<CVOptionFlags>) -> CVReturn
-    {
+                                      _ inNow: UnsafePointer<CVTimeStamp>,
+                                      _ inOutputTime: UnsafePointer<CVTimeStamp>,
+                                      _ flagsIn: CVOptionFlags,
+                                      _ flagsOut: UnsafeMutablePointer<CVOptionFlags>) -> CVReturn {
         let signalSwap = {
             self.swapLock.lock()
             self.swapTime += 1
